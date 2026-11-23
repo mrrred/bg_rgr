@@ -68,6 +68,8 @@ public sealed class AnalyticsViewModel : ViewModel, IDisposable
         await RefreshAsync();
     }
 
+    public void Stop() => _timer.Stop();
+
     public async Task RefreshAsync()
     {
         if (_disposed || _busy)

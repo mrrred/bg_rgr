@@ -1,26 +1,15 @@
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
 using BD_RGR.Services;
 using BD_RGR.ViewModels;
 using Microsoft.Win32;
 
 namespace BD_RGR.Views;
 
-public partial class AnalyticsWindow : Window
+public partial class AnalyticsView : UserControl
 {
-    public AnalyticsWindow(AnalyticsViewModel model)
-    {
-        InitializeComponent();
-        DataContext = model;
-        UpdateLanguage();
-        Translation.Current.LanguageChanged += OnLanguageChanged;
-        Loaded += async (_, _) => await model.StartAsync();
-        Closed += (_, _) =>
-        {
-            Translation.Current.LanguageChanged -= OnLanguageChanged;
-            model.Dispose();
-        };
-    }
+    public AnalyticsView() => InitializeComponent();
 
     private AnalyticsViewModel Model => (AnalyticsViewModel)DataContext;
 
@@ -36,7 +25,7 @@ public partial class AnalyticsWindow : Window
             Title=text["ExportPng"], Filter=$"{text["PngFile"]}|*.png", DefaultExt=".png",
             AddExtension=true, FileName=text["AnalyticsFileName"]
         };
-        if (dialog.ShowDialog(this) != true)
+        if (dialog.ShowDialog(Window.GetWindow(this)) != true)
             return;
 
         try
@@ -49,8 +38,4 @@ public partial class AnalyticsWindow : Window
             Model.ShowFileError();
         }
     }
-
-    private void OnLanguageChanged(object? sender, EventArgs e) => UpdateLanguage();
-    private void UpdateLanguage() =>
-        Language = System.Windows.Markup.XmlLanguage.GetLanguage(Translation.Current.Culture.Name);
 }

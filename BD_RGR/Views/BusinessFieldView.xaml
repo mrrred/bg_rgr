@@ -13,7 +13,7 @@
                 </MultiBinding>
             </TextBlock.Text>
         </TextBlock>
-        <TextBlock FontSize="{DynamicResource UiLabelSize}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,5">
+        <TextBlock x:Name="FieldLabel" FontSize="{DynamicResource UiLabelSize}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,5">
             <TextBlock.Style>
                 <Style TargetType="TextBlock">
                     <Style.Triggers>
@@ -34,13 +34,65 @@
                  Visibility="{Binding IsText, Converter={StaticResource BooleanToVisibility}}" />
         <views:LocalizedDatePicker SelectedDate="{Binding DateValue}" SelectedDateFormat="Short"
                     Visibility="{Binding EditableDate, Converter={StaticResource BooleanToVisibility}}" />
-        <DockPanel Visibility="{Binding CanSearch, Converter={StaticResource BooleanToVisibility}}" Margin="0,0,0,4">
-            <Button DockPanel.Dock="Right" Content="{loc:Loc Find}" Click="Find_Click" Margin="6,0,0,0" />
-            <TextBox Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}" MaxLength="200"
-                     AutomationProperties.Name="{loc:Loc FindRelated}" KeyDown="Find_KeyDown" />
-        </DockPanel>
-        <ComboBox x:Name="Options" ItemsSource="{Binding Options}" SelectedItem="{Binding Selected, Mode=TwoWay}"
-                  IsEnabled="{Binding Editable}" DisplayMemberPath="Label" DropDownOpened="Options_Opened"
-                  Visibility="{Binding IsChoice, Converter={StaticResource BooleanToVisibility}}" />
+        <Grid Visibility="{Binding CanSearch, Converter={StaticResource BooleanToVisibility}}">
+            <TextBox x:Name="ReferenceInput" Padding="9,5,40,5" MaxLength="200"
+                     AutomationProperties.LabeledBy="{Binding ElementName=FieldLabel}"
+                     TextChanged="ReferenceInput_Changed" PreviewKeyDown="ReferenceInput_KeyDown"
+                     PreviewMouseLeftButtonDown="ReferenceInput_Click" GotKeyboardFocus="ReferenceInput_GotFocus"
+                     LostKeyboardFocus="ReferenceInput_LostFocus" />
+            <Button Width="34" Margin="0,1,1,1" Padding="0" MinHeight="0" HorizontalAlignment="Right"
+                    Background="{DynamicResource InputBrush}" BorderThickness="0" Focusable="False"
+                    AutomationProperties.Name="{loc:Loc FindRelated}" Click="ReferenceToggle_Click">
+                <Path Width="9" Height="5" Stretch="Fill" Data="M 0,0 L 4,4 L 8,0"
+                      Stroke="{DynamicResource InkBrush}" StrokeThickness="1.5" />
+            </Button>
+            <Popup x:Name="ReferencePopup" Placement="Bottom" PlacementTarget="{Binding ElementName=ReferenceInput}">
+                <Border Width="{Binding ActualWidth, ElementName=ReferenceInput}" MaxHeight="250"
+                        Background="{DynamicResource PaperBrush}" BorderBrush="{DynamicResource InputBorderBrush}"
+                        BorderThickness="1" TextElement.FontSize="{DynamicResource UiFontSize}">
+                    <Grid>
+                        <ListBox x:Name="ReferenceOptions" Focusable="False"
+                                 AutomationProperties.LabeledBy="{Binding ElementName=FieldLabel}"
+                                 Background="{DynamicResource PaperBrush}" Foreground="{DynamicResource InkBrush}"
+                                 BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 PreviewMouseUp="ReferenceOptions_Click">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Label}" TextWrapping="Wrap" />
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Focusable" Value="False" />
+                                    <Setter Property="Padding" Value="8,6" />
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <Border x:Name="OptionBackground" Padding="{TemplateBinding Padding}" Background="Transparent">
+                                                    <ContentPresenter />
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="OptionBackground" Property="Background" Value="{DynamicResource SelectedBrush}" />
+                                                    </Trigger>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter TargetName="OptionBackground" Property="Background" Value="{DynamicResource SelectedBrush}" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                        </ListBox>
+                        <TextBlock x:Name="ReferenceStatus" Style="{StaticResource MutedText}" Margin="8,6"
+                                   AutomationProperties.LiveSetting="Polite" />
+                    </Grid>
+                </Border>
+            </Popup>
+        </Grid>
+        <ComboBox ItemsSource="{Binding Options}" SelectedItem="{Binding Selected, Mode=TwoWay}"
+                  IsEnabled="{Binding Editable}" DisplayMemberPath="Label"
+                  Visibility="{Binding ShowsOptions, Converter={StaticResource BooleanToVisibility}}" />
     </StackPanel>
 </UserControl>

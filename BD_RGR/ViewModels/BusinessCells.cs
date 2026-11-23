@@ -38,11 +38,8 @@ public sealed class DisplayRow : ViewModel
 
 public sealed class FieldEditor : ViewModel
 {
-    private readonly Func<string, string?, Task<LookupRow[]>> _lookup;
+    private readonly Func<string, string?, CancellationToken, Task<LookupRow[]>> _lookup;
     private readonly Action<AuthNotice> _error;
-    private bool _loading;
-    private bool _loaded;
-    private string _query = "";
     private string? _text;
     private FieldOption[] _options = [];
     private FieldOption? _selected;
@@ -50,7 +47,7 @@ public sealed class FieldEditor : ViewModel
     private bool _hasError;
 
     public FieldEditor(BusinessField field, string? value, string? label, bool editable,
-        Func<string, string?, Task<LookupRow[]>> lookup, Action<AuthNotice> error, string? section = null)
+        Func<string, string?, CancellationToken, Task<LookupRow[]>> lookup, Action<AuthNotice> error, string? section = null)
     {
         Field = field;
         Editable = editable;
@@ -77,12 +74,12 @@ public sealed class FieldEditor : ViewModel
     public bool HasSection => Section is not null;
     public bool IsReference => Field.Target is not null;
     public bool IsChoice => IsReference || Field.Choices is not null || Field.Kind == "boolean";
+    public bool ShowsOptions => IsChoice && !CanSearch;
     public bool EditableDate => Editable && Field.Kind == "date";
     public bool IsText => !IsChoice && !EditableDate;
     public bool CanSearch => IsReference && Editable;
     public bool HasError { get => _hasError; set => Set(ref _hasError, value); }
     public string? Value => _value;
-    public string Query { get => _query; set => Set(ref _query, value); }
     public string? Text { get => _text; set => Set(ref _text, value); }
     public DateTime? DateValue
     {
@@ -98,31 +95,51 @@ public sealed class FieldEditor : ViewModel
         get => _selected;
         set
         {
-            if (value is not null && Set(ref _selected, value))
-                _value = value.Value;
+            if (value is null)
+                return;
+            _value = value.Value;
+            Set(ref _selected, value);
         }
     }
 
-    public async Task SearchAsync(bool force = false)
+    public async Task<FieldOption[]?> FindReferencesAsync(string query, CancellationToken cancellationToken)
     {
-        if (!CanSearch || _loading || _loaded && !force)
-            return;
-        _loading = true;
         try
         {
-            var options = await _lookup(Query, Value);
-            ApplyOptions(options.Select(row => new FieldOption(row.Id.ToString(CultureInfo.InvariantCulture), row.Label)));
-            _loaded = true;
+            var rows = await _lookup(query, null, cancellationToken);
+            var choices = rows.Select(ReferenceOption).ToList();
+            var unassigned = new FieldOption(null, TitleKey: "Unassigned");
+            if (Field.Nullable && Translation.Current.Culture.CompareInfo.IndexOf(unassigned.Label, query,
+                    CompareOptions.IgnoreCase) >= 0)
+                choices.Insert(0, unassigned);
+            return choices.ToArray();
+        }
+        catch (AuthApiException error)
+        {
+            if (!cancellationToken.IsCancellationRequested)
+                _error(error.Notice);
+            return null;
+        }
+    }
+
+    public async Task LoadSelectedLabelAsync()
+    {
+        if (!CanSearch || Selected is not { Value: { } id } original)
+            return;
+        try
+        {
+            var rows = await _lookup("", id, CancellationToken.None);
+            var option = rows.Select(ReferenceOption).FirstOrDefault(option => option.Value == id);
+            if (option is not null && Selected == original)
+                Selected = option;
         }
         catch (AuthApiException error)
         {
             _error(error.Notice);
         }
-        finally
-        {
-            _loading = false;
-        }
     }
+
+    private static FieldOption ReferenceOption(LookupRow row) => new(row.Id.ToString(CultureInfo.InvariantCulture), row.Label);
 
     public string? StoredValue()
     {
@@ -164,6 +181,8 @@ public sealed class FieldEditor : ViewModel
     {
         foreach (var option in Options)
             option.RefreshText();
+        if (CanSearch)
+            Notify(nameof(Selected));
         if (!Editable)
             Text = Format(Field, Value);
     }

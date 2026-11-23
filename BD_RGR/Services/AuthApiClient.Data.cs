@@ -19,9 +19,10 @@ public sealed partial class AuthApiClient
     public Task<BusinessRow> RowAsync(Session session, string resource, int id) =>
         GetAsync<BusinessRow>(session, $"tables/{resource}/{id}");
 
-    public Task<LookupRow[]> LookupAsync(Session session, string resource, string field, string search, string? selected) =>
+    public Task<LookupRow[]> LookupAsync(Session session, string resource, string field, string search, string? selected,
+        CancellationToken cancellationToken) =>
         GetAsync<LookupRow[]>(session, $"lookups/{resource}/{field}?q={Uri.EscapeDataString(search)}"
-            + (selected is null ? "" : $"&selected={Uri.EscapeDataString(selected)}"));
+            + (selected is null ? "" : $"&selected={Uri.EscapeDataString(selected)}"), cancellationToken);
 
     public Task<VehicleLink> VehicleLinkAsync(Session session, int id) =>
         GetAsync<VehicleLink>(session, $"vehicle-links/{id}");
@@ -41,9 +42,9 @@ public sealed partial class AuthApiClient
         using var response = await SendAsync(HttpMethod.Delete, $"tables/{resource}/{id}", token: session.Token);
     }
 
-    private async Task<T> GetAsync<T>(Session session, string path)
+    private async Task<T> GetAsync<T>(Session session, string path, CancellationToken cancellationToken = default)
     {
-        using var response = await SendAsync(HttpMethod.Get, path, token: session.Token);
+        using var response = await SendAsync(HttpMethod.Get, path, token: session.Token, cancellationToken: cancellationToken);
         return await ReadAsync<T>(response);
     }
 

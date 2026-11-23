@@ -20,6 +20,8 @@ public sealed class MainViewModel : ViewModel, IDisposable
         _accounts = accounts;
         _returnToSignIn = returnToSignIn;
         Preferences = preferences;
+        BackToMenu = new Command(() => _activeEntry.Parent?.Activate.Execute(null));
+        Analytics = new AnalyticsViewModel(accounts, session, EndSession);
         Documents = new DocumentsViewModel(accounts, session, EndSession);
         Documents.PropertyChanged += DocumentsChanged;
         DataTable = new BusinessTableViewModel(accounts, session, notice => _returnToSignIn(Session.Username, notice));
@@ -33,7 +35,8 @@ public sealed class MainViewModel : ViewModel, IDisposable
     public Session Session { get; }
     public ProfileSettings Preferences { get; }
     public DocumentsViewModel Documents { get; }
-    public event Action? AnalyticsRequested;
+    public AnalyticsViewModel Analytics { get; }
+    public Command BackToMenu { get; }
     public BusinessTableViewModel DataTable { get; }
     public IReadOnlyList<MenuGroup> Menu { get; }
     public IReadOnlyList<MenuEntry> Pages { get; }
@@ -47,18 +50,16 @@ public sealed class MainViewModel : ViewModel, IDisposable
     public bool ShowsAbout => _activeEntry.TitleKey == "About";
     public bool ShowsPasswordChange => _activeEntry.TitleKey == "ChangePassword";
     public bool ShowsPageChoices => PageChoices.Count > 0;
+    public bool HasParentPage => _activeEntry.Parent is not null;
     public bool CanNavigate => !_isAccountBusy && !DataTable.Busy && Documents.IsReady;
-
-    public AnalyticsViewModel CreateAnalytics() => new(_accounts, Session, EndSession);
-
-    public void OpenAnalytics() => AnalyticsRequested?.Invoke();
 
     private void EndSession(AuthNotice notice) => _returnToSignIn(Session.Username, notice);
 
     public XmlLanguage UiLanguage => XmlLanguage.GetLanguage(Translation.Current.Culture.Name);
 
     public bool CanUseAccountActions => CanNavigate;
-    public bool HasSidebarNotice => AccountNotice is not null && !ShowsPasswordChange;
+    public bool HasAccountNotice => AccountNotice is not null;
+    public bool HasSidebarNotice => HasAccountNotice && !ShowsPasswordChange;
 
     public AuthNotice? AccountNotice
     {
@@ -66,7 +67,10 @@ public sealed class MainViewModel : ViewModel, IDisposable
         private set
         {
             if (Set(ref _accountNotice, value))
+            {
+                Notify(nameof(HasAccountNotice));
                 Notify(nameof(HasSidebarNotice));
+            }
         }
     }
 
@@ -122,17 +126,13 @@ public sealed class MainViewModel : ViewModel, IDisposable
 
     private async void Activate(MenuEntry entry)
     {
-        if (!CanNavigate)
+        if (!CanNavigate || _activeEntry == entry)
             return;
-        if (_activeEntry == entry)
-        {
-            if (ShowsAnalytics)
-                OpenAnalytics();
-            return;
-        }
 
         if (_activeEntry is not null)
         {
+            if (ShowsAnalytics)
+                Analytics.Stop();
             _activeEntry.IsActive = false;
             if (_activeEntry.Parent is { } oldParent)
                 oldParent.IsActive = false;
@@ -154,10 +154,11 @@ public sealed class MainViewModel : ViewModel, IDisposable
         Notify(nameof(ShowsPasswordChange));
         Notify(nameof(PageChoices));
         Notify(nameof(ShowsPageChoices));
+        Notify(nameof(HasParentPage));
         if (DocumentsViewModel.TemplateFor(entry.TitleKey) is { } template)
             Documents.Open(template);
         if (ShowsAnalytics)
-            OpenAnalytics();
+            await Analytics.StartAsync();
 
         if (entry.IsResource && DataTable.Resource?.TitleKey != entry.TitleKey)
             await DataTable.OpenAsync(entry.TitleKey);
@@ -188,6 +189,7 @@ public sealed class MainViewModel : ViewModel, IDisposable
     public void Dispose()
     {
         Translation.Current.LanguageChanged -= OnLanguageChanged;
+        Analytics.Dispose();
         DataTable.PropertyChanged -= TableChanged;
         DataTable.Dispose();
         Documents.PropertyChanged -= DocumentsChanged;

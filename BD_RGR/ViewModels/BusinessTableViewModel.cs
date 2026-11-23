@@ -154,7 +154,7 @@ public sealed class BusinessTableViewModel : ViewModel, IDisposable
         SetStatus(null);
         OpenEditor();
         if (Fields.FirstOrDefault(field => field.Field.Name == _filterField) is { } prefilled)
-            _ = prefilled.SearchAsync();
+            _ = prefilled.LoadSelectedLabelAsync();
     }
 
     public void Cancel()
@@ -346,7 +346,7 @@ public sealed class BusinessTableViewModel : ViewModel, IDisposable
 
     private FieldEditor MakeEditor(BusinessResource resource, BusinessField field, string? value, string? label, bool editable,
         string? section = null) =>
-        new(field, value, label, editable, (query, selected) => _api.LookupAsync(_session, resource.Name, field.Name, query, selected),
+        new(field, value, label, editable, (query, selected, ct) => _api.LookupAsync(_session, resource.Name, field.Name, query, selected, ct),
             HandleError, section);
 
     private static RelatedAction[] RelatedActions(string resource) => resource switch
