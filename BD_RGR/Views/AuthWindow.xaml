@@ -1,0 +1,88 @@
+<Window x:Class="BD_RGR.Views.AuthWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:BD_RGR.Services"
+        xmlns:views="clr-namespace:BD_RGR.Views"
+        Title="{loc:Loc AppName}" Style="{StaticResource AppWindow}" WindowStartupLocation="CenterScreen"
+        Width="620" Height="680" MinWidth="510" MinHeight="560"
+        FocusManager.FocusedElement="{Binding ElementName=SignInName}">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="68" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Background="{DynamicResource SidebarBrush}" Padding="24,0">
+            <DockPanel LastChildFill="True">
+                <views:LanguagePicker DockPanel.Dock="Right" VerticalAlignment="Center" />
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Style="{StaticResource BrandMark}">
+                        <TextBlock Text="↗" FontSize="21" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock Text="{loc:Loc AppName}" Foreground="White" FontSize="21" FontWeight="SemiBold" VerticalAlignment="Center" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Focusable="False">
+            <Border Style="{StaticResource Card}" MaxWidth="430" Padding="28,24" Margin="24" VerticalAlignment="Center">
+                <StackPanel>
+                    <StackPanel IsEnabled="{Binding CanInteract}"
+                                Visibility="{Binding IsSigningIn, Converter={StaticResource BooleanToVisibility}}">
+                        <TextBlock Style="{StaticResource Heading}" Text="{loc:Loc SignInTitle}" Margin="0,0,0,20" />
+
+                        <Label Content="{loc:Loc Username}" Target="{Binding ElementName=SignInName}" />
+                        <TextBox x:Name="SignInName" Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" MaxLength="128" Margin="0,0,0,12" />
+                        <Label Content="{loc:Loc Password}" Target="{Binding ElementName=SignInPassword}" />
+                        <PasswordBox x:Name="SignInPassword" MaxLength="1024" Margin="0,0,0,16" />
+
+                        <Button Content="{loc:Loc SignIn}" Style="{StaticResource PrimaryButton}" IsDefault="{Binding IsSigningIn}"
+                                Click="SignIn_Click" Margin="0,0,0,8" />
+                        <Button Content="{loc:Loc RegisterTitle}" Click="OpenRegistration_Click" />
+                    </StackPanel>
+
+                    <StackPanel IsEnabled="{Binding CanInteract}"
+                                Visibility="{Binding IsRegistering, Converter={StaticResource BooleanToVisibility}}">
+                        <TextBlock Style="{StaticResource Heading}" Text="{loc:Loc RegisterTitle}" Margin="0,0,0,16" />
+
+                        <Label Content="{loc:Loc Username}" Target="{Binding ElementName=RegistrationName}" />
+                        <TextBox x:Name="RegistrationName" Text="{Binding RegistrationName, UpdateSourceTrigger=PropertyChanged}" MaxLength="128" Margin="0,0,0,10" />
+                        <Label Content="{loc:Loc Password}" Target="{Binding ElementName=RegistrationPassword}" />
+                        <PasswordBox x:Name="RegistrationPassword" MaxLength="1024" Margin="0,0,0,10" />
+                        <Label Content="{loc:Loc RepeatPassword}" Target="{Binding ElementName=RepeatedPassword}" />
+                        <PasswordBox x:Name="RepeatedPassword" MaxLength="1024" Margin="0,0,0,10" />
+                        <Label Content="{loc:Loc Role}" Target="{Binding ElementName=RegistrationRole}" />
+                        <ComboBox x:Name="RegistrationRole" ItemsSource="{Binding Roles}" SelectedItem="{Binding SelectedRole}" Margin="0,0,0,16">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock>
+                                        <TextBlock.Text>
+                                            <MultiBinding Converter="{StaticResource TranslateKey}">
+                                                <Binding Path="TitleKey" />
+                                                <Binding Path="Language" Source="{x:Static loc:Translation.Current}" />
+                                            </MultiBinding>
+                                        </TextBlock.Text>
+                                    </TextBlock>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <Button Content="{loc:Loc Register}" Style="{StaticResource PrimaryButton}" IsDefault="{Binding IsRegistering}"
+                                Click="Register_Click" Margin="0,0,0,8" />
+                        <Button Content="{loc:Loc BackToSignIn}" Click="BackToSignIn_Click" />
+                    </StackPanel>
+
+                    <TextBlock Style="{StaticResource MutedText}" MinHeight="20" Margin="0,10,0,0"
+                               AutomationProperties.LiveSetting="Polite">
+                        <TextBlock.Text>
+                            <MultiBinding Converter="{StaticResource TranslateKey}">
+                                <Binding Path="Notice.Key" />
+                                <Binding Path="Language" Source="{x:Static loc:Translation.Current}" />
+                                <Binding Path="Notice.Field" />
+                            </MultiBinding>
+                        </TextBlock.Text>
+                    </TextBlock>
+                </StackPanel>
+            </Border>
+        </ScrollViewer>
+    </Grid>
+</Window>

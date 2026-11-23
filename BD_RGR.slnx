@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="BD_RGR/BD_RGR.csproj" />
+  <Project Path="BD_RGR.Api/BD_RGR.Api.csproj" />
+</Solution>

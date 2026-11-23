@@ -1,0 +1,7 @@
+# Local PostgreSQL credentials
+appsettings.Local.json
+
+[Bb]in/
+[Oo]bj/
+.vs/
+*.user

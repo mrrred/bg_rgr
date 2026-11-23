@@ -1,0 +1,9 @@
+<UserControl x:Class="BD_RGR.Views.LanguagePicker"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:BD_RGR.Services">
+    <ComboBox Width="124" AutomationProperties.Name="{loc:Loc Language}"
+              ItemsSource="{Binding Languages, Source={x:Static loc:Translation.Current}}"
+              SelectedValue="{Binding Language, Source={x:Static loc:Translation.Current}, Mode=TwoWay}"
+              DisplayMemberPath="Name" SelectedValuePath="Code" />
+</UserControl>

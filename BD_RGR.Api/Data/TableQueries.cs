@@ -1,0 +1,164 @@
+using Npgsql;
+using NpgsqlTypes;
+
+namespace BD_RGR.Api.Data;
+
+internal sealed record TableRow(int Id, Dictionary<string, string?> Values, Dictionary<string, string?> Labels);
+internal sealed record LookupValue(int Id, string Label);
+internal sealed record TablePage(int Page, bool HasMore, List<TableRow> Rows);
+
+internal static class TableQueries
+{
+    internal const int PageSize = 50;
+
+    public static async Task<TablePage> ListAsync(NpgsqlConnection connection, Resource table, int page,
+        string search, string? sort, bool descending, int? id, Field? relatedField, int? relatedId, CancellationToken ct)
+    {
+        var fields = table.DisplayFields.ToArray();
+        var data = fields.Select(f => Column(table, f)).ToArray();
+        var from = Source(table);
+        var labels = new string[fields.Length];
+        for (var i = 0; i < fields.Length; i++)
+        {
+            labels[i] = data[i];
+            if (fields[i].Target is not { } target)
+                continue;
+
+            var reference = ResourceCatalog.Resources[target];
+            var alias = $"ref{i}";
+            var vehicleAlias = $"ref_vehicle{i}";
+            from += $" LEFT JOIN public.{target} {alias} ON {alias}.id = {data[i]}";
+            if (reference.IsVehicleSubtype)
+                from += $" LEFT JOIN public.vehicle {vehicleAlias} ON {vehicleAlias}.id = {alias}.vehicle_id";
+
+            var visibleAlias = reference.IsVehicleSubtype ? vehicleAlias : alias;
+            labels[i] = $"CASE WHEN {visibleAlias}.id IS NOT NULL THEN {Label(reference, alias, vehicleAlias)} END";
+        }
+        var sortIndex = Array.FindIndex(fields, f => f.Name == sort);
+        var order = sortIndex < 0 ? "t.id" : labels[sortIndex];
+        if (sortIndex >= 0 && fields[sortIndex].Kind is "text" or "reference")
+            order = $"({order}) COLLATE pg_catalog.\"unicode\"";
+        var select = string.Join(", ", data.Select(x => $"({x})::text").Concat(
+            fields.Select((f, i) => f.Target is null ? "NULL::text" : labels[i])));
+        var searchColumns = labels.Select((value, i) => SearchExpression(fields[i], value)).Prepend("t.id::text");
+        var conditions = new List<string>();
+        await using var command = new NpgsqlCommand { Connection = connection };
+        if (id is { } rowId)
+        {
+            conditions.Add("t.id = @id");
+            command.Parameters.AddWithValue("id", rowId);
+        }
+        if (relatedField is not null && relatedId is { } filterId)
+        {
+            conditions.Add($"{Column(table, relatedField)} = @related");
+            command.Parameters.AddWithValue("related", filterId);
+        }
+        if (search.Length > 0)
+        {
+            conditions.Add($"strpos(lower(concat_ws(' ', {string.Join(", ", searchColumns)}) COLLATE pg_catalog.\"unicode\"), lower(@search COLLATE pg_catalog.\"unicode\")) > 0");
+            command.Parameters.AddWithValue("search", search);
+        }
+        var where = conditions.Count == 0 ? "" : " WHERE " + string.Join(" AND ", conditions);
+        command.CommandText = $"""
+            SELECT t.id, {select} FROM {from}{where}
+            ORDER BY {order} {(descending ? "DESC" : "ASC")} NULLS LAST, t.id
+            LIMIT {PageSize + 1} OFFSET @offset
+            """;
+        command.Parameters.AddWithValue("offset", (long)page * PageSize);
+
+        var rows = new List<TableRow>();
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            var values = new Dictionary<string, string?>();
+            var links = new Dictionary<string, string?>();
+            for (var i = 0; i < fields.Length; i++)
+            {
+                values[fields[i].Name] = reader.IsDBNull(i + 1) ? null : reader.GetString(i + 1);
+                if (fields[i].Target is not null)
+                {
+                    var labelIndex = 1 + fields.Length + i;
+                    links[fields[i].Name] = reader.IsDBNull(labelIndex) ? null : reader.GetString(labelIndex);
+                }
+            }
+            rows.Add(new(reader.GetInt32(0), values, links));
+        }
+        var hasMore = rows.Count > PageSize;
+        if (hasMore)
+            rows.RemoveAt(PageSize);
+        return new(page, hasMore, rows);
+    }
+
+    public static async Task<List<LookupValue>> LookupAsync(NpgsqlConnection connection, Resource target, string query,
+        int? selected, CancellationToken ct)
+    {
+        await using var command = new NpgsqlCommand($"""
+            SELECT id, label FROM (SELECT t.id, {Label(target, "t", "v")} AS label FROM {Source(target)}) AS choices
+            WHERE id = @selected OR strpos(lower(label COLLATE pg_catalog."unicode"), lower(@query COLLATE pg_catalog."unicode")) > 0
+            ORDER BY (id IS NOT DISTINCT FROM @selected) DESC, label COLLATE pg_catalog."unicode", id LIMIT {PageSize}
+            """, connection);
+        command.Parameters.AddWithValue("query", query);
+        command.Parameters.AddWithValue("selected", NpgsqlDbType.Integer, (object?)selected ?? DBNull.Value);
+        var rows = new List<LookupValue>();
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+            rows.Add(new(reader.GetInt32(0), reader.GetString(1)));
+        return rows;
+    }
+
+    public static async Task<bool> ExistsAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction,
+        Resource target, int id, CancellationToken ct)
+    {
+        await using var command = new NpgsqlCommand($"SELECT EXISTS (SELECT 1 FROM {Source(target)} WHERE t.id = $1)",
+            connection, transaction);
+        command.Parameters.AddWithValue(id);
+        return await command.ExecuteScalarAsync(ct) is true;
+    }
+
+    internal static string Source(Resource resource) => resource.IsVehicleSubtype
+        ? $"public.{resource.Name} t JOIN public.vehicle v ON v.id = t.vehicle_id"
+        : $"public.{resource.Name} t";
+
+    private static string Column(Resource table, Field field) =>
+        $"{(table.IsVehicleSubtype && ResourceCatalog.Vehicle.Fields.Contains(field) ? "v" : "t")}.{field.Name}";
+
+    private static string Label(Resource target, string a, string vehicle)
+    {
+        if (target.IsVehicleSubtype)
+            return VehicleLabel(vehicle);
+        return target.Name switch
+        {
+            "employee" => $"concat_ws(' ', {a}.last_name, {a}.first_name, {a}.middle_name) || ' · #' || {a}.id",
+            "vehicle" => VehicleLabel(a),
+            "model" => ModelLabel(a),
+            "garage" or "route" or "brigade" => $"concat_ws(' · ', {a}.number, {a}.name)",
+            "job_position" => $"concat_ws(' · ', {a}.okpdtr_2025_code, {a}.name)",
+            "cargo" => $"concat_ws(' · ', {a}.name, (SELECT k.name FROM public.cargo_type k WHERE k.id = {a}.cargo_type_id))",
+            "cargo_transportation" => $"concat_ws(' · ', {a}.date, (SELECT cv.registration_number FROM public.truck ct JOIN public.vehicle cv ON cv.id=ct.vehicle_id WHERE ct.id={a}.truck_id), '#' || {a}.id)",
+            "repair" => $"concat_ws(' · ', {a}.date, (SELECT rv2.registration_number FROM public.vehicle rv2 WHERE rv2.id={a}.vehicle_id), '#' || {a}.id)",
+            _ => $"{a}.name::text"
+        };
+    }
+
+    private static string ModelLabel(string a) =>
+        $"concat_ws(' ', (SELECT mb.name FROM public.brand mb WHERE mb.id = {a}.brand_id), {a}.name)";
+
+    private static string VehicleLabel(string a) =>
+        $"concat_ws(' · ', {a}.registration_number, (SELECT {ModelLabel("vm")} FROM public.model vm WHERE vm.id = {a}.model_id))";
+
+    private static string SearchExpression(Field field, string expression)
+    {
+        if (field.Choices is { } choices)
+        {
+            var english = string.Join(" ", choices.Select(c => $"WHEN '{c.Value}' THEN '{c.English}'"));
+            return $"concat_ws(' ', ({expression})::text, CASE ({expression})::text {english} END)";
+        }
+        return field.Kind switch
+        {
+            "date" => $"concat_ws(' ', {expression}::text, to_char({expression}, 'DD.MM.YYYY'), to_char({expression}, 'FMMM/FMDD/YYYY'))",
+            "numeric" => $"concat_ws(' ', {expression}::text, replace({expression}::text, '.', ','))",
+            "boolean" => $"CASE WHEN {expression} THEN 'true yes да' ELSE 'false no нет' END",
+            _ => $"({expression})::text"
+        };
+    }
+}
