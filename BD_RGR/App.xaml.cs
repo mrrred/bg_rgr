@@ -22,15 +22,15 @@ public partial class App : Application
 
         try
         {
+            _preferences.Initialize();
             var settings = ClientSettings.Load();
-            _preferences.Initialize(settings.DefaultLanguage);
             _accounts = new AuthApiClient(settings.ApiBaseUrl);
         }
         catch (ClientSettingsException error)
         {
             var text = Translation.Current;
-            MessageBox.Show(string.Format(text.Culture, text["ClientSettingsInvalid"], error.Field),
-                text["AppName"], MessageBoxButton.OK, MessageBoxImage.Error);
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            AppDialog.ShowError(text["AppName"], string.Format(text.Culture, text["ClientSettingsInvalid"], error.Field));
             Shutdown(1);
             return;
         }
@@ -45,15 +45,11 @@ public partial class App : Application
         base.OnExit(e);
     }
 
-    private void ShowSignIn(string username, AuthNotice? notice)
-    {
-        _preferences.Activate(null);
+    private void ShowSignIn(string username, AuthNotice? notice) =>
         ReplaceWindow(new AuthWindow(new AuthViewModel(_accounts, ShowWorkspace, username, notice)));
-    }
 
     private void ShowWorkspace(Session session)
     {
-        _preferences.Activate(session.Username);
         var viewModel = new MainViewModel(session, _accounts, _preferences, ShowSignIn);
         var window = new MainWindow { DataContext = viewModel };
         window.Closed += (_, _) => viewModel.Dispose();

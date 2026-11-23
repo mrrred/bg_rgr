@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace BD_RGR.Services;
 
-internal sealed record ClientSettings(Uri ApiBaseUrl, string DefaultLanguage)
+internal sealed record ClientSettings(Uri ApiBaseUrl)
 {
     public static ClientSettings Load()
     {
@@ -28,13 +28,10 @@ internal sealed record ClientSettings(Uri ApiBaseUrl, string DefaultLanguage)
             throw new ClientSettingsException("ApiBaseUrl");
         }
 
-        if (settings.DefaultLanguage is not ("ru" or "en"))
-            throw new ClientSettingsException("DefaultLanguage");
-
-        return new ClientSettings(url, settings.DefaultLanguage);
+        return new ClientSettings(url);
     }
 
-    private sealed record SettingsFile(string? ApiBaseUrl, string? DefaultLanguage);
+    private sealed record SettingsFile(string? ApiBaseUrl);
 }
 
 internal sealed class ClientSettingsException(string field) : Exception

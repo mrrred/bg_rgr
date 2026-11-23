@@ -13,12 +13,12 @@
                 </MultiBinding>
             </TextBlock.Text>
         </TextBlock>
-        <TextBlock FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,5">
+        <TextBlock FontSize="{DynamicResource UiLabelSize}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,5">
             <TextBlock.Style>
                 <Style TargetType="TextBlock">
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding HasError}" Value="True">
-                            <Setter Property="Foreground" Value="#A4262C" />
+                            <Setter Property="Foreground" Value="{DynamicResource ErrorBrush}" />
                         </DataTrigger>
                     </Style.Triggers>
                 </Style>

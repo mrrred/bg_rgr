@@ -2,63 +2,87 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Windows;
 using BD_RGR.ViewModels;
 
 namespace BD_RGR.Services;
 
+public enum AppTheme { Light, Dark }
+public enum TextScale { Normal, Large, ExtraLarge }
+public enum TableDensity { Normal, Compact }
+
 public sealed class ProfileSettings : ViewModel, IDisposable
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() }
+    };
+
     private readonly string _path;
-    private ProfileFile _profile = new();
-    private string _defaultLanguage = "ru";
-    private string? _username;
-    private bool _highContrast;
-    private bool _largeText;
-    private bool _compactRows;
+    private ResourceDictionary? _darkPalette;
+    private ResourceDictionary? _colorVisionPalette;
+    private AppTheme _theme;
+    private TextScale _textSize;
+    private TableDensity _density;
+    private bool _colorVisionMode;
     private bool _applying;
     private bool _saveError;
-    private ResourceDictionary? _contrast;
 
     public ProfileSettings(string? path = null)
     {
         _path = Path.GetFullPath(path ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "BD_RGR", "preferences.json"));
+        ResetCommand = new Command(Reset);
     }
 
-    public bool HighContrast { get => _highContrast; set { if (Set(ref _highContrast, value)) Changed(); } }
-    public bool LargeText { get => _largeText; set { if (Set(ref _largeText, value)) Changed(); } }
-    public bool CompactRows { get => _compactRows; set { if (Set(ref _compactRows, value)) Changed(); } }
+    public AppTheme Theme { get => _theme; set { if (Set(ref _theme, value)) Changed(); } }
+    public TextScale TextSize { get => _textSize; set { if (Set(ref _textSize, value)) Changed(); } }
+    public TableDensity Density { get => _density; set { if (Set(ref _density, value)) Changed(); } }
+    public bool ColorVisionMode { get => _colorVisionMode; set { if (Set(ref _colorVisionMode, value)) Changed(); } }
     public bool SaveError { get => _saveError; private set => Set(ref _saveError, value); }
+    public Command ResetCommand { get; }
 
-    public void Initialize(string defaultLanguage)
+    public void Initialize()
     {
-        _defaultLanguage = defaultLanguage;
+        var preferences = new Preferences();
+        var migrated = false;
         try
         {
-            _profile = ReadProfile();
+            if (File.Exists(_path))
+            {
+                using var json = JsonDocument.Parse(File.ReadAllText(_path));
+                (preferences, migrated) = ReadPreferences(json.RootElement);
+            }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
         {
             SaveError = true;
         }
 
+        Apply(preferences);
         Translation.Current.LanguageChanged += OnLanguageChanged;
-        Activate(null);
+        if (migrated)
+            Save();
     }
 
-    public void Activate(string? username)
+    private void Reset()
     {
-        _username = username;
-        var preferences = username is not null && _profile.Accounts.TryGetValue(username, out var account)
-            ? account : _profile.Guest;
+        Apply(new Preferences());
+        Save();
+    }
+
+    private void Apply(Preferences preferences)
+    {
         _applying = true;
         try
         {
-            HighContrast = preferences.HighContrast;
-            LargeText = preferences.LargeText;
-            CompactRows = preferences.CompactRows;
-            Translation.Current.Language = preferences.Language is "ru" or "en" ? preferences.Language : _defaultLanguage;
+            Theme = preferences.Theme;
+            TextSize = preferences.TextSize;
+            Density = preferences.Density;
+            ColorVisionMode = preferences.ColorVisionMode;
+            Translation.Current.Language = preferences.Language;
         }
         finally
         {
@@ -75,33 +99,38 @@ public sealed class ProfileSettings : ViewModel, IDisposable
             return;
 
         ApplyAppearance();
-        var updated = new Preferences(Translation.Current.Language, HighContrast, LargeText, CompactRows);
+        Save();
+    }
+
+    private void Save()
+    {
+        var preferences = new Preferences(Theme, TextSize, Translation.Current.Language, ColorVisionMode, Density);
         var temporary = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         var identity = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(_path.ToUpperInvariant())));
-        using var gate = new Mutex(false, @"Local\BD_RGR_" + identity);
-        var locked = false;
         try
         {
-            try { locked = gate.WaitOne(TimeSpan.FromMilliseconds(500)); }
-            catch (AbandonedMutexException) { locked = true; }
-            if (!locked)
+            using var gate = new Mutex(false, @"Local\BD_RGR_" + identity);
+            var locked = false;
+            try
             {
-                SaveError = true;
-                return;
+                try { locked = gate.WaitOne(TimeSpan.FromMilliseconds(500)); }
+                catch (AbandonedMutexException) { locked = true; }
+                if (!locked)
+                {
+                    SaveError = true;
+                    return;
+                }
+
+                Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+                File.WriteAllText(temporary, JsonSerializer.Serialize(preferences, JsonOptions));
+                File.Move(temporary, _path, overwrite: true);
+                SaveError = false;
             }
-
-            // Merge with the last saved profile so two clients do not overwrite each other's account settings.
-            try { _profile = ReadProfile(); }
-            catch (JsonException) { _profile = new(); }
-            if (_username is null)
-                _profile.Guest = updated;
-            else
-                _profile.Accounts[_username] = updated;
-
-            Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-            File.WriteAllText(temporary, JsonSerializer.Serialize(_profile, new JsonSerializerOptions { WriteIndented = true }));
-            File.Move(temporary, _path, overwrite: true);
-            SaveError = false;
+            finally
+            {
+                if (locked)
+                    gate.ReleaseMutex();
+            }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -109,20 +138,36 @@ public sealed class ProfileSettings : ViewModel, IDisposable
             try { File.Delete(temporary); }
             catch (Exception cleanup) when (cleanup is IOException or UnauthorizedAccessException) { }
         }
-        finally
-        {
-            if (locked)
-                gate.ReleaseMutex();
-        }
     }
 
-    private ProfileFile ReadProfile()
+    private static (Preferences Values, bool Migrated) ReadPreferences(JsonElement root)
     {
-        var result = File.Exists(_path) ? JsonSerializer.Deserialize<ProfileFile>(File.ReadAllText(_path)) ?? new() : new();
-        result.Guest ??= new();
-        result.Accounts ??= new(StringComparer.Ordinal);
-        return result;
+        if (root.ValueKind != JsonValueKind.Object)
+            throw new JsonException();
+
+        if (root.TryGetProperty("Guest", out var guest) || root.TryGetProperty("Accounts", out _))
+        {
+            return (new Preferences(
+                TextSize: IsTrue(guest, "LargeText") ? TextScale.Large : TextScale.Normal,
+                Language: ReadLanguage(guest),
+                Density: IsTrue(guest, "CompactRows") ? TableDensity.Compact : TableDensity.Normal), true);
+        }
+
+        return (new Preferences(ReadEnum(root, "Theme", AppTheme.Light), ReadEnum(root, "TextSize", TextScale.Normal),
+            ReadLanguage(root), IsTrue(root, "ColorVisionMode"), ReadEnum(root, "Density", TableDensity.Normal)), false);
     }
+
+    private static bool IsTrue(JsonElement data, string name) =>
+        data.ValueKind == JsonValueKind.Object && data.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
+
+    private static string? ReadString(JsonElement data, string name) =>
+        data.ValueKind == JsonValueKind.Object && data.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() : null;
+
+    private static string ReadLanguage(JsonElement data) => ReadString(data, "Language") == "en" ? "en" : "ru";
+
+    private static T ReadEnum<T>(JsonElement data, string name, T fallback) where T : struct, Enum =>
+        Enum.TryParse<T>(ReadString(data, name), out var value) && Enum.IsDefined(value) ? value : fallback;
 
     private void ApplyAppearance()
     {
@@ -130,28 +175,37 @@ public sealed class ProfileSettings : ViewModel, IDisposable
             return;
 
         var dictionaries = app.Resources.MergedDictionaries;
-        if (HighContrast)
+        if (_colorVisionPalette is not null)
+            dictionaries.Remove(_colorVisionPalette);
+        if (Theme == AppTheme.Dark)
         {
-            _contrast ??= new ResourceDictionary { Source = new Uri("/BD_RGR;component/Styles/Contrast.xaml", UriKind.Relative) };
-            if (!dictionaries.Contains(_contrast))
-                dictionaries.Add(_contrast);
+            _darkPalette ??= Palette("Dark");
+            if (!dictionaries.Contains(_darkPalette))
+                dictionaries.Add(_darkPalette);
         }
-        else if (_contrast is not null)
-            dictionaries.Remove(_contrast);
+        else if (_darkPalette is not null)
+            dictionaries.Remove(_darkPalette);
+        if (ColorVisionMode)
+        {
+            _colorVisionPalette ??= Palette("ColorVision");
+            dictionaries.Add(_colorVisionPalette);
+        }
 
-        app.Resources["UiFontSize"] = LargeText ? 17d : 14d;
-        app.Resources["UiLabelSize"] = LargeText ? 16d : 13d;
-        app.Resources["TableRowHeight"] = CompactRows ? LargeText ? 34d : 30d : LargeText ? 48d : 42d;
+        var font = TextSize switch { TextScale.ExtraLarge => 21d, TextScale.Large => 17d, _ => 14d };
+        app.Resources["UiFontSize"] = font;
+        app.Resources["UiLabelSize"] = font - 1;
+        app.Resources["UiHeadingSize"] = font + 16;
+        app.Resources["UiSubheadingSize"] = font + 3;
+        app.Resources["SidebarWidth"] = new GridLength(TextSize == TextScale.ExtraLarge ? 288d : 252d);
+        app.Resources["TableRowHeight"] = 2 * font + (Density == TableDensity.Compact ? 2 : 14);
+        app.Resources["TableHeaderHeight"] = 2 * font + 14;
     }
+
+    private static ResourceDictionary Palette(string name) =>
+        new() { Source = new Uri($"/BD_RGR;component/Styles/{name}.xaml", UriKind.Relative) };
 
     public void Dispose() => Translation.Current.LanguageChanged -= OnLanguageChanged;
 
-    private sealed class ProfileFile
-    {
-        public Preferences Guest { get; set; } = new();
-        public Dictionary<string, Preferences> Accounts { get; set; } = new(StringComparer.Ordinal);
-    }
-
-    private sealed record Preferences(string? Language = null, bool HighContrast = false,
-        bool LargeText = false, bool CompactRows = false);
+    private sealed record Preferences(AppTheme Theme = AppTheme.Light, TextScale TextSize = TextScale.Normal,
+        string Language = "ru", bool ColorVisionMode = false, TableDensity Density = TableDensity.Normal);
 }

@@ -1,0 +1,10 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <SolidColorBrush x:Key="PrimaryBrush" Color="#214D81" />
+    <SolidColorBrush x:Key="FocusBrush" Color="#4D91DB" />
+    <SolidColorBrush x:Key="AccentBrush" Color="#FFC17E" />
+    <SolidColorBrush x:Key="ChartBarBrush" Color="#477DB9" />
+    <SolidColorBrush x:Key="ChartMarkerBrush" Color="#C66A27" />
+    <SolidColorBrush x:Key="StatusNormalBrush" Color="#357BBF" />
+    <SolidColorBrush x:Key="StatusAttentionBrush" Color="#C66A27" />
+</ResourceDictionary>

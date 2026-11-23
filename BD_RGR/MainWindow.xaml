@@ -23,7 +23,7 @@
 
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="252" />
+            <ColumnDefinition Width="{DynamicResource SidebarWidth}" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
@@ -35,12 +35,14 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <StackPanel Orientation="Horizontal" Margin="4,0,0,18">
-                    <Border Style="{StaticResource BrandMark}">
+                <DockPanel Margin="4,0,0,18">
+                    <Border DockPanel.Dock="Left" Style="{StaticResource BrandMark}">
                         <TextBlock Text="↗" FontSize="21" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
-                    <TextBlock Text="{loc:Loc AppName}" Foreground="White" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
-                </StackPanel>
+                    <TextBlock Text="{loc:Loc AppName}" Foreground="{DynamicResource SidebarTextBrush}"
+                               FontSize="{DynamicResource UiSubheadingSize}" TextWrapping="Wrap"
+                               FontWeight="SemiBold" VerticalAlignment="Center" />
+                </DockPanel>
 
                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                               Focusable="False" IsEnabled="{Binding CanNavigate}">
@@ -51,7 +53,7 @@
                                     <Expander IsExpanded="{Binding ExpandedByDefault, Mode=OneTime}"
                                           Foreground="{DynamicResource SidebarTextBrush}" Margin="0,0,0,10">
                                         <Expander.Header>
-                                            <TextBlock FontSize="12" FontWeight="SemiBold">
+                                            <TextBlock FontSize="{DynamicResource UiLabelSize}" FontWeight="SemiBold" TextWrapping="Wrap">
                                                 <TextBlock.Text>
                                                     <MultiBinding Converter="{StaticResource TranslateKey}">
                                                         <Binding Path="TitleKey" />
@@ -64,7 +66,8 @@
                                             <ItemsControl ItemsSource="{Binding Entries}" ItemTemplate="{StaticResource SidebarEntry}" />
                                             <StackPanel Visibility="{Binding HasRelatedEntries, Converter={StaticResource BooleanToVisibility}}">
                                                 <TextBlock Text="{loc:Loc Relations}" Foreground="{DynamicResource SidebarTextBrush}"
-                                                       FontSize="12" FontWeight="SemiBold" Margin="8,10,0,4" />
+                                                       FontSize="{DynamicResource UiLabelSize}" FontWeight="SemiBold"
+                                                       TextWrapping="Wrap" Margin="8,10,0,4" />
                                                 <ItemsControl ItemsSource="{Binding RelatedEntries}" ItemTemplate="{StaticResource SidebarEntry}" />
                                             </StackPanel>
                                         </StackPanel>
@@ -78,7 +81,7 @@
 
                 <StackPanel Grid.Row="2" Margin="4,12,4,0">
                     <Border Height="1" Background="{DynamicResource FocusBrush}" Margin="0,0,0,12" />
-                    <TextBlock Text="{Binding Session.Username}" Foreground="White" FontWeight="SemiBold"
+                    <TextBlock Text="{Binding Session.Username}" Foreground="{DynamicResource SidebarTextBrush}" FontWeight="SemiBold"
                                TextTrimming="CharacterEllipsis" />
                     <TextBlock Foreground="{DynamicResource SidebarTextBrush}" TextWrapping="Wrap" Margin="0,2,0,9">
                         <TextBlock.Text>
@@ -148,33 +151,35 @@
                     Visibility="{Binding DataContext.ShowsSettings, RelativeSource={RelativeSource AncestorType=Window},
                                          Converter={StaticResource BooleanToVisibility}}" />
 
-            <Border Grid.Row="1" Style="{StaticResource Card}" Padding="20" VerticalAlignment="Top"
-                    HorizontalAlignment="Left" Width="400" IsVisibleChanged="PasswordForm_IsVisibleChanged"
-                    Visibility="{Binding ShowsPasswordChange, Converter={StaticResource BooleanToVisibility}}">
-                <StackPanel>
-                    <Label Content="{loc:Loc CurrentPassword}" Target="{Binding ElementName=CurrentPasswordInput}" />
-                    <PasswordBox x:Name="CurrentPasswordInput" MaxLength="1024" Margin="0,0,0,12"
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                          Visibility="{Binding ShowsPasswordChange, Converter={StaticResource BooleanToVisibility}}">
+                <Border Style="{StaticResource Card}" Padding="20" MaxWidth="500" HorizontalAlignment="Left"
+                    IsVisibleChanged="PasswordForm_IsVisibleChanged">
+                    <StackPanel>
+                        <Label Content="{loc:Loc CurrentPassword}" Target="{Binding ElementName=CurrentPasswordInput}" />
+                        <PasswordBox x:Name="CurrentPasswordInput" MaxLength="1024" Margin="0,0,0,12"
                                  IsEnabled="{Binding CanUseAccountActions}" />
-                    <Label Content="{loc:Loc NewPassword}" Target="{Binding ElementName=NewPasswordInput}" />
-                    <PasswordBox x:Name="NewPasswordInput" MaxLength="1024" Margin="0,0,0,12"
+                        <Label Content="{loc:Loc NewPassword}" Target="{Binding ElementName=NewPasswordInput}" />
+                        <PasswordBox x:Name="NewPasswordInput" MaxLength="1024" Margin="0,0,0,12"
                                  IsEnabled="{Binding CanUseAccountActions}" />
-                    <Label Content="{loc:Loc RepeatPassword}" Target="{Binding ElementName=RepeatNewPasswordInput}" />
-                    <PasswordBox x:Name="RepeatNewPasswordInput" MaxLength="1024" Margin="0,0,0,14"
+                        <Label Content="{loc:Loc RepeatPassword}" Target="{Binding ElementName=RepeatNewPasswordInput}" />
+                        <PasswordBox x:Name="RepeatNewPasswordInput" MaxLength="1024" Margin="0,0,0,14"
                                  IsEnabled="{Binding CanUseAccountActions}" />
-                    <Button Content="{loc:Loc Save}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left"
+                        <Button Content="{loc:Loc Save}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left"
                             IsEnabled="{Binding CanUseAccountActions}" IsDefault="{Binding ShowsPasswordChange}"
                             Click="ChangePassword_Click" />
-                    <TextBlock Style="{StaticResource MutedText}" Margin="0,10,0,0" AutomationProperties.LiveSetting="Polite">
-                        <TextBlock.Text>
-                            <MultiBinding Converter="{StaticResource TranslateKey}">
-                                <Binding Path="AccountNotice.Key" />
-                                <Binding Path="Language" Source="{x:Static loc:Translation.Current}" />
-                                <Binding Path="AccountNotice.Field" />
-                            </MultiBinding>
-                        </TextBlock.Text>
-                    </TextBlock>
-                </StackPanel>
-            </Border>
+                        <TextBlock Style="{StaticResource MutedText}" Margin="0,10,0,0" AutomationProperties.LiveSetting="Polite">
+                            <TextBlock.Text>
+                                <MultiBinding Converter="{StaticResource TranslateKey}">
+                                    <Binding Path="AccountNotice.Key" />
+                                    <Binding Path="Language" Source="{x:Static loc:Translation.Current}" />
+                                    <Binding Path="AccountNotice.Field" />
+                                </MultiBinding>
+                            </TextBlock.Text>
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
+            </ScrollViewer>
 
             <views:DocumentsView Grid.Row="1" DataContext="{Binding Documents}"
                     Visibility="{Binding DataContext.ShowsDocuments, RelativeSource={RelativeSource AncestorType=Window},

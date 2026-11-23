@@ -47,17 +47,23 @@ public partial class BusinessTableView : UserControl
         ShowSort();
     }
 
-    private DataGridTextColumn Column(string name, string title, Binding binding, bool reference)
+    private DataGridColumn Column(string name, string title, Binding binding, bool reference)
     {
         var header = new TextBlock();
         header.SetBinding(TextBlock.TextProperty, new Binding($"[{title}]") { Source = Translation.Current });
+        if (name == "status")
+            return new DataGridTemplateColumn
+            {
+                Header = header, SortMemberPath = name, CellTemplate = (DataTemplate)FindResource("VehicleStatusCell"),
+                MinWidth = 85, ClipboardContentBinding = binding
+            };
         var column = new DataGridTextColumn { Header = header, SortMemberPath = name, Binding = binding, MinWidth = 65 };
         if (reference)
         {
             var style = new Style(typeof(TextBlock), column.ElementStyle);
             var link = new DataTrigger { Binding = new Binding($"CanFollow[{name}]"), Value = true };
             link.Setters.Add(new Setter(TextBlock.TextDecorationsProperty, TextDecorations.Underline));
-            link.Setters.Add(new Setter(ForegroundProperty, FindResource("PrimaryBrush")));
+            link.Setters.Add(new Setter(ForegroundProperty, new DynamicResourceExtension("LinkBrush")));
             link.Setters.Add(new Setter(CursorProperty, Cursors.Hand));
             style.Triggers.Add(link);
             column.ElementStyle = style;
@@ -138,8 +144,7 @@ public partial class BusinessTableView : UserControl
         var text = Translation.Current;
         var key = model.Resource?.IsVehicleSubtype == true ? "ConfirmVehicleDelete" : "ConfirmRecordDelete";
         var message = string.Format(text.Culture, text[key], row.Id);
-        if (MessageBox.Show(Window.GetWindow(this), message, text["Delete"], MessageBoxButton.YesNo,
-                MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes)
+        if (AppDialog.Confirm(Window.GetWindow(this), text["Delete"], message))
             await model.DeleteAsync();
     }
 }

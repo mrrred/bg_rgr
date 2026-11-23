@@ -8,18 +8,19 @@
         FocusManager.FocusedElement="{Binding ElementName=SignInName}">
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="68" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Border Background="{DynamicResource SidebarBrush}" Padding="24,0">
+        <Border Background="{DynamicResource SidebarBrush}" Padding="24,14" MinHeight="68">
             <DockPanel LastChildFill="True">
                 <views:LanguagePicker DockPanel.Dock="Right" VerticalAlignment="Center" />
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <Border Style="{StaticResource BrandMark}">
                         <TextBlock Text="↗" FontSize="21" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
-                    <TextBlock Text="{loc:Loc AppName}" Foreground="White" FontSize="21" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <TextBlock Text="{loc:Loc AppName}" Foreground="{DynamicResource SidebarTextBrush}"
+                               FontSize="{DynamicResource UiSubheadingSize}" FontWeight="SemiBold" VerticalAlignment="Center" />
                 </StackPanel>
             </DockPanel>
         </Border>
@@ -55,7 +56,7 @@
                         <ComboBox x:Name="RegistrationRole" ItemsSource="{Binding Roles}" SelectedItem="{Binding SelectedRole}" Margin="0,0,0,16">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate>
-                                    <TextBlock>
+                                                    <TextBlock TextWrapping="Wrap">
                                         <TextBlock.Text>
                                             <MultiBinding Converter="{StaticResource TranslateKey}">
                                                 <Binding Path="TitleKey" />

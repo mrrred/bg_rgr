@@ -3,15 +3,48 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:BD_RGR.Services"
              xmlns:views="clr-namespace:BD_RGR.Views">
-    <Border Style="{StaticResource Card}" Padding="20" VerticalAlignment="Top" HorizontalAlignment="Left">
-        <StackPanel MinWidth="265">
-            <Label Content="{loc:Loc Language}" />
-            <views:LanguagePicker HorizontalAlignment="Left" Margin="0,0,0,14" />
-            <CheckBox Content="{loc:Loc HighContrast}" IsChecked="{Binding HighContrast}" Margin="0,0,0,10" />
-            <CheckBox Content="{loc:Loc LargeText}" IsChecked="{Binding LargeText}" Margin="0,0,0,10" />
-            <CheckBox Content="{loc:Loc CompactRows}" IsChecked="{Binding CompactRows}" />
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel MaxWidth="650" HorizontalAlignment="Left" Margin="0,0,12,0">
+            <Border Style="{StaticResource Card}" Padding="20" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="{loc:Loc InterfaceSettings}" Style="{StaticResource Subheading}" Margin="0,0,0,12" />
+                    <Label Content="{loc:Loc ThemeSetting}" Target="{Binding ElementName=ThemeInput}" />
+                    <ComboBox x:Name="ThemeInput" SelectedValuePath="Tag" SelectedValue="{Binding Theme, Mode=TwoWay}" Margin="0,0,0,12">
+                        <ComboBoxItem Tag="{x:Static loc:AppTheme.Light}" Content="{loc:Loc LightTheme}" />
+                        <ComboBoxItem Tag="{x:Static loc:AppTheme.Dark}" Content="{loc:Loc DarkTheme}" />
+                    </ComboBox>
+                    <Label Content="{loc:Loc TextSizeSetting}" Target="{Binding ElementName=SizeInput}" />
+                    <ComboBox x:Name="SizeInput" SelectedValuePath="Tag" SelectedValue="{Binding TextSize, Mode=TwoWay}" Margin="0,0,0,12">
+                        <ComboBoxItem Tag="{x:Static loc:TextScale.Normal}" Content="{loc:Loc NormalText}" />
+                        <ComboBoxItem Tag="{x:Static loc:TextScale.Large}" Content="{loc:Loc LargeText}" />
+                        <ComboBoxItem Tag="{x:Static loc:TextScale.ExtraLarge}" Content="{loc:Loc ExtraLargeText}" />
+                    </ComboBox>
+                    <Label Content="{loc:Loc Language}" />
+                    <views:LanguagePicker HorizontalAlignment="Left" />
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Padding="20" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="{loc:Loc AccessibilitySettings}" Style="{StaticResource Subheading}" Margin="0,0,0,12" />
+                    <CheckBox IsChecked="{Binding ColorVisionMode}" AutomationProperties.Name="{loc:Loc ColorVisionMode}">
+                        <TextBlock Text="{loc:Loc ColorVisionMode}" TextWrapping="Wrap" />
+                    </CheckBox>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Padding="20" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="{loc:Loc Tables}" Style="{StaticResource Subheading}" Margin="0,0,0,12" />
+                    <Label Content="{loc:Loc RowDensity}" Target="{Binding ElementName=DensityInput}" />
+                    <ComboBox x:Name="DensityInput" SelectedValuePath="Tag" SelectedValue="{Binding Density, Mode=TwoWay}">
+                        <ComboBoxItem Tag="{x:Static loc:TableDensity.Normal}" Content="{loc:Loc NormalDensity}" />
+                        <ComboBoxItem Tag="{x:Static loc:TableDensity.Compact}" Content="{loc:Loc CompactDensity}" />
+                    </ComboBox>
+                </StackPanel>
+            </Border>
+            <Button Content="{loc:Loc ResetPreferences}" Command="{Binding ResetCommand}" HorizontalAlignment="Left" />
             <TextBlock Text="{loc:Loc PreferencesSaveError}" Style="{StaticResource MutedText}" Margin="0,10,0,0"
+                       AutomationProperties.LiveSetting="Polite"
                        Visibility="{Binding SaveError, Converter={StaticResource BooleanToVisibility}}" />
         </StackPanel>
-    </Border>
+    </ScrollViewer>
 </UserControl>

@@ -3,6 +3,25 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:BD_RGR.Services"
              xmlns:views="clr-namespace:BD_RGR.Views">
+    <UserControl.Resources>
+        <DataTemplate x:Key="VehicleStatusCell">
+            <StackPanel Orientation="Horizontal">
+                <Ellipse Width="10" Height="10" Margin="0,0,7,0" VerticalAlignment="Center" Focusable="False">
+                    <Ellipse.Style>
+                        <Style TargetType="Ellipse">
+                            <Setter Property="Fill" Value="{DynamicResource StatusAttentionBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Row.Values[status]}" Value="исправен">
+                                    <Setter Property="Fill" Value="{DynamicResource StatusNormalBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Ellipse.Style>
+                </Ellipse>
+                <TextBlock Text="{Binding [status]}" VerticalAlignment="Center" />
+            </StackPanel>
+        </DataTemplate>
+    </UserControl.Resources>
     <Grid IsEnabled="{Binding IsReady}">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
@@ -41,9 +60,9 @@
                         <views:BusinessFieldView DataContext="{Binding MileageVehicle}" />
                         <WrapPanel>
                             <views:LocalizedDatePicker SelectedDate="{Binding FromDate}" AutomationProperties.Name="{loc:Loc DateFrom}"
-                                        Width="120" Margin="0,0,6,0" />
+                                        MinWidth="148" Margin="0,0,6,4" />
                             <views:LocalizedDatePicker SelectedDate="{Binding ToDate}" AutomationProperties.Name="{loc:Loc DateTo}"
-                                        Width="120" Margin="0,0,6,0" />
+                                        MinWidth="148" Margin="0,0,6,4" />
                             <Button Content="{loc:Loc Calculate}" Click="Calculate_Click" />
                         </WrapPanel>
                     </StackPanel>
@@ -53,7 +72,7 @@
                     <DataGrid x:Name="RowsGrid" ItemsSource="{Binding Rows}" SelectedItem="{Binding Selection, Mode=TwoWay}"
                               Sorting="RowsGrid_Sorting" PreviewMouseLeftButtonUp="RowsGrid_MouseUp"
                               PreviewKeyDown="RowsGrid_KeyDown" />
-                    <TextBlock Text="{loc:Loc NoRows}" Style="{StaticResource MutedText}" Margin="12,55,8,0"
+                    <TextBlock Text="{loc:Loc NoRows}" Style="{StaticResource MutedText}" Margin="12,64,8,0"
                                IsHitTestVisible="False" VerticalAlignment="Top"
                                Visibility="{Binding ShowsEmpty, Converter={StaticResource BooleanToVisibility}}" />
                 </Grid>

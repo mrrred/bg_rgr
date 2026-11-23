@@ -16,6 +16,8 @@ public sealed class AnalyticsChart : FrameworkElement
     public static readonly DependencyProperty InkProperty = Register<Brush>(nameof(Ink), Brushes.Black);
     public static readonly DependencyProperty GridLineProperty = Register<Brush>(nameof(GridLine), Brushes.LightGray);
     public static readonly DependencyProperty BarsProperty = Register<Brush>(nameof(Bars), Brushes.SeaGreen);
+    public static readonly DependencyProperty MarkerProperty = Register<Brush>(nameof(Marker), Brushes.DarkGreen);
+    public static readonly DependencyProperty TextSizeProperty = Register(nameof(TextSize), 14d);
 
     public ChartSnapshot? Snapshot { get => (ChartSnapshot?)GetValue(SnapshotProperty); set => SetValue(SnapshotProperty, value); }
     public string ChartTitle { get => (string)GetValue(ChartTitleProperty); set => SetValue(ChartTitleProperty, value); }
@@ -24,6 +26,8 @@ public sealed class AnalyticsChart : FrameworkElement
     public Brush Ink { get => (Brush)GetValue(InkProperty); set => SetValue(InkProperty, value); }
     public Brush GridLine { get => (Brush)GetValue(GridLineProperty); set => SetValue(GridLineProperty, value); }
     public Brush Bars { get => (Brush)GetValue(BarsProperty); set => SetValue(BarsProperty, value); }
+    public Brush Marker { get => (Brush)GetValue(MarkerProperty); set => SetValue(MarkerProperty, value); }
+    public double TextSize { get => (double)GetValue(TextSizeProperty); set => SetValue(TextSizeProperty, value); }
 
     protected override void OnRender(DrawingContext drawing) => Draw(drawing, RenderSize, VisualTreeHelper.GetDpi(this).PixelsPerDip);
 
@@ -47,27 +51,34 @@ public sealed class AnalyticsChart : FrameworkElement
         if (Snapshot is not { } snapshot || size.Width < 225 || size.Height < 140)
             return;
         var culture = Translation.Current.Culture;
-        Text(ChartTitle, 16, 12, 19, true);
-        Text(Period, 16, 40, 13);
+        var axisSize = TextSize - 3;
+        var title = Label(ChartTitle, TextSize + 5, true);
+        title.MaxTextWidth = size.Width - 32;
+        drawing.DrawText(title, new Point(16, 12));
+        var period = Label(Period, TextSize - 1, false);
+        var periodY = 17 + title.Height;
+        drawing.DrawText(period, new Point(16, periodY));
+        var top = periodY + period.Height + axisSize + 14;
         var result = snapshot.Result;
         if (result.Points.Length == 0)
         {
-            Text(Translation.Current["AnalyticsEmpty"], 16, 76, 14);
+            drawing.DrawText(Label(Translation.Current["AnalyticsEmpty"], TextSize, false), new Point(16, top));
             return;
         }
 
         var maximum = Math.Max(1, result.Points.Max(p => p.Value));
-        var left = Math.Max(45, Label(maximum.ToString("N0", culture), 11, false).Width + 15);
+        var left = Math.Max(45, Label(maximum.ToString("N0", culture), axisSize, false).Width + 15);
         var right = size.Width - 16;
-        const double top = 77;
-        var bottom = size.Height - 37;
+        var bottom = size.Height - axisSize * 2 - 16;
         var plotHeight = bottom - top;
+        if (plotHeight < 30 || right - left < 115)
+            return;
         var line = new Pen(GridLine, 1);
         for (var i = 0; i <= 4; i++)
         {
             var y = bottom - plotHeight * i / 4;
             drawing.DrawLine(line, new Point(left, y), new Point(right, y));
-            var value = Label(((double)maximum * i / 4).ToString(maximum < 4 ? "0.##" : "N0", culture), 11, false);
+            var value = Label(((double)maximum * i / 4).ToString(maximum < 4 ? "0.##" : "N0", culture), axisSize, false);
             drawing.DrawText(value, new Point(left - value.Width - 7, y - value.Height / 2));
         }
 
@@ -79,24 +90,26 @@ public sealed class AnalyticsChart : FrameworkElement
             var x = left + (point.Date.DayNumber - result.From.DayNumber + .5) * step;
             var height = plotHeight * point.Value / maximum;
             drawing.DrawRectangle(Bars, null, new Rect(x - barWidth / 2, bottom - height, barWidth, height));
-            if (step >= 48)
+            if (step >= 12)
+                drawing.DrawEllipse(Marker, null, new Point(x, bottom - height), 3, 3);
+            var value = Label(point.Value.ToString("N0", culture), axisSize, false);
+            if (step >= value.Width + 5)
             {
-                var value = Label(point.Value.ToString("N0", culture), 11, false);
-                drawing.DrawText(value, new Point(x - value.Width / 2, Math.Max(top - 14, bottom - height - 16)));
+                drawing.DrawText(value, new Point(x - value.Width / 2, bottom - height - value.Height - 5));
             }
         }
 
-        var dateLabels = Math.Min(days, Math.Max(2, (int)((right - left) / 95)));
+        var dateWidth = Math.Max(Label(result.From.ToString("d", culture), axisSize, false).Width,
+            Label(result.To.ToString("d", culture), axisSize, false).Width);
+        var dateLabels = Math.Min(days, Math.Max(1, (int)((right - left) / (dateWidth + 22))));
         for (var n = 0; n < dateLabels; n++)
         {
-            var day = dateLabels == 1 ? 0 : n * (days - 1) / (dateLabels - 1);
+            var day = dateLabels == 1 ? (days - 1) / 2 : n * (days - 1) / (dateLabels - 1);
             var x = left + (day + .5) * step;
-            var date = Label(result.From.AddDays(day).ToString("d", culture), 11, false);
-            drawing.DrawText(date, new Point(Math.Clamp(x - date.Width / 2, left, right - date.Width), bottom + 8));
+            var date = Label(result.From.AddDays(day).ToString("d", culture), axisSize, false);
+            drawing.DrawText(date, new Point(Math.Clamp(x - date.Width / 2, left, Math.Max(left, right - date.Width)), bottom + 8));
         }
 
-        void Text(string value, double x, double y, double fontSize, bool bold = false) =>
-            drawing.DrawText(Label(value, fontSize, bold), new Point(x, y));
         FormattedText Label(string value, double fontSize, bool bold) =>
             new(value, culture, FlowDirection.LeftToRight, new Typeface(new FontFamily("Segoe UI"),
                 FontStyles.Normal, bold ? FontWeights.SemiBold : FontWeights.Normal, FontStretches.Normal),

@@ -36,12 +36,16 @@ public sealed class Translation : INotifyPropertyChanged
 
             _language = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Language)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(UiLanguage)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FirstDayOfWeek)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("Item[]"));
             LanguageChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
     public CultureInfo Culture => GetCulture(Language);
+    public XmlLanguage UiLanguage => XmlLanguage.GetLanguage(Culture.Name);
+    public DayOfWeek FirstDayOfWeek => Culture.DateTimeFormat.FirstDayOfWeek;
     public string this[string key] => _translations[Language][key];
     public string Get(string language, string key) => _translations[language][key];
     public static CultureInfo GetCulture(string language) =>
