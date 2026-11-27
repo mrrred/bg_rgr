@@ -5,7 +5,7 @@ namespace BD_RGR.ViewModels;
 internal static class WorkspaceMenu
 {
     private static readonly string[] BusinessTables =
-        ["MileageLog", "Route", "Trip", "CargoTransportation", "Employee", "EmploymentRecord", "Brigade", "Repair", "VehiclesRequiringRepair"];
+        ["MileageLog", "Route", "Trip", "CargoTransportation", "Employee", "EmploymentRecord", "Brigade", "Repair"];
 
     private static readonly string[] References =
         ["Garage", "Brand", "Model", "Cargo", "CargoType", "Point", "Component", "City", "Street",

@@ -4,6 +4,9 @@
     <SolidColorBrush x:Key="FocusBrush" Color="#4D91DB" />
     <SolidColorBrush x:Key="AccentBrush" Color="#FFC17E" />
     <SolidColorBrush x:Key="ChartBarBrush" Color="#477DB9" />
+    <SolidColorBrush x:Key="ChartSecondBrush" Color="#D48743" />
+    <SolidColorBrush x:Key="ChartThirdBrush" Color="#52A38C" />
+    <SolidColorBrush x:Key="ChartFourthBrush" Color="#B78BCD" />
     <SolidColorBrush x:Key="ChartMarkerBrush" Color="#C66A27" />
     <SolidColorBrush x:Key="StatusNormalBrush" Color="#357BBF" />
     <SolidColorBrush x:Key="StatusAttentionBrush" Color="#C66A27" />

@@ -84,7 +84,7 @@ internal sealed partial class ManualSelect(string role, List<ManualSelect.Token>
             }, 12)}";
         }
 
-        var limit = ReportQueries.MaxRows + 1;
+        var limit = SelectQueries.MaxRows + 1;
         if (Take("limit"))
         {
             if (Current.Kind != "number" || !int.TryParse(Current.Value, NumberStyles.None, CultureInfo.InvariantCulture, out var requested))

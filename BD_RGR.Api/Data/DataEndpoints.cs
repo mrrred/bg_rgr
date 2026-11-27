@@ -1,5 +1,6 @@
 using BD_RGR.Api.Auth;
 using Npgsql;
+using Microsoft.AspNetCore.Mvc;
 
 namespace BD_RGR.Api.Data;
 
@@ -42,13 +43,14 @@ internal sealed class DataEndpoints(AccountsDatabase accounts, SessionStore sess
         }
     }
 
-    public IResult Catalog(string role) => Results.Ok(ResourceCatalog.Tables
+    public IResult Catalog(string role) => Results.Ok(ResourceCatalog.Resources.Values
         .Where(t => ResourceCatalog.Can(role, t.Name, 'R'))
         .Select(t => new
         {
             t.Name, t.TitleKey, t.IsVehicleSubtype,
             passportFieldCount = t.IsVehicleSubtype ? ResourceCatalog.Vehicle.Fields.Length : 0,
             rights = ResourceCatalog.Rights(role, t.Name),
+            queryFields = t.ReadFields.Select(field => field.Name).Prepend("id"),
             fields = t.DisplayFields.Select(f => new
             {
                 f.Name, f.TitleKey, f.Kind, f.Nullable, f.MaxLength, f.Target, f.Default,
@@ -57,12 +59,13 @@ internal sealed class DataEndpoints(AccountsDatabase accounts, SessionStore sess
         }));
 
     public async Task<IResult> ListAsync(string role, string resource, int? id, string? q, string? sort,
-        bool? desc, int? page, string? relatedField, int? relatedId, CancellationToken ct)
+        bool? desc, int? page, string? relatedField, int? relatedId, int? pageSize, string? fields,
+        bool? labels, int? afterId, string? latestBy, string[] filters, CancellationToken ct)
     {
         var table = Check(role, resource, 'R');
-        if (id is <= 0 || page is < 0 or > 1_000_000 ||
-            (sort is not null and not "id" && !table.DisplayFields.Any(f => f.Name == sort)))
+        if (id is <= 0)
             throw new DataFailure("InvalidField");
+        var read = ResourceRead.Parse(table, page, pageSize, fields, labels, sort, desc, afterId, latestBy, filters);
 
         Field? filter = null;
         Resource? related = null;
@@ -71,14 +74,14 @@ internal sealed class DataEndpoints(AccountsDatabase accounts, SessionStore sess
             filter = table.DisplayFields.SingleOrDefault(f => f.Name == relatedField && f.Target is not null);
             if (filter is null || relatedId is not > 0)
                 throw new DataFailure("InvalidField");
-            related = Check(role, filter.Target!, 'R', true);
+            related = Check(role, filter.Target!, 'R');
         }
 
         await using var db = await database.OpenAsync(role, ct);
         if (related is not null && !await TableQueries.ExistsAsync(db, null, related, relatedId!.Value, ct))
             throw new DataFailure("RowNotFound", 404);
 
-        var data = await TableQueries.ListAsync(db, table, page ?? 0, Query(q), sort, desc ?? false, id, filter, relatedId, ct);
+        var data = await TableQueries.ListAsync(db, table, read, Query(q), id, filter, relatedId, ct);
         if (id is null)
             return Results.Ok(data);
         return data.Rows.SingleOrDefault() is { } row ? Results.Ok(row) : Error("RowNotFound", 404);
@@ -89,7 +92,7 @@ internal sealed class DataEndpoints(AccountsDatabase accounts, SessionStore sess
         var table = Check(role, resource, 'R');
         var reference = table.DisplayFields.SingleOrDefault(f => f.Name == field && f.Target is not null)
             ?? throw new DataFailure("InvalidField");
-        var lookup = Check(role, reference.Target!, 'R', true);
+        var lookup = Check(role, reference.Target!, 'R');
         await using var db = await database.OpenAsync(role, ct);
         return Results.Ok(await TableQueries.LookupAsync(db, lookup, Query(q), selected, ct));
     }
@@ -111,46 +114,9 @@ internal sealed class DataEndpoints(AccountsDatabase accounts, SessionStore sess
         return Results.NoContent();
     }
 
-    public async Task<IResult> VehicleLinkAsync(string role, int id, CancellationToken ct)
+    private static Resource Check(string role, string name, char operation)
     {
-        Check(role, "vehicle", 'R', true);
-        await using var db = await database.OpenAsync(role, ct);
-        var rows = new List<(string Name, int Id)>();
-        foreach (var table in ResourceCatalog.Tables.Where(t => t.IsVehicleSubtype && ResourceCatalog.Can(role, t.Name, 'R')))
-        {
-            await using var command = new NpgsqlCommand(
-                $"SELECT t.id FROM {TableQueries.Source(table)} WHERE t.vehicle_id = $1", db);
-            command.Parameters.AddWithValue(id);
-            if (await command.ExecuteScalarAsync(ct) is int target)
-                rows.Add((table.Name, target));
-        }
-        return rows.Count switch
-        {
-            1 => Results.Ok(new { resource = rows[0].Name, id = rows[0].Id }),
-            0 => Error("RowNotFound", 404),
-            _ => Error("AmbiguousVehicle", 409)
-        };
-    }
-
-    public async Task<IResult> MileageAsync(string role, int vehicleId, DateOnly from, DateOnly to, CancellationToken ct)
-    {
-        if (role != "garage_engineer")
-            throw new DataFailure("OperationDenied", 403);
-        if (from > to)
-            throw new DataFailure("InvalidPeriod");
-        await using var db = await database.OpenAsync(role, ct);
-        if (!await TableQueries.ExistsAsync(db, null, ResourceCatalog.Vehicle, vehicleId, ct))
-            throw new DataFailure("RowNotFound", 404);
-        await using var command = new NpgsqlCommand("SELECT public.calculate_vehicle_mileage($1, $2, $3)", db);
-        command.Parameters.AddWithValue(vehicleId);
-        command.Parameters.AddWithValue(from);
-        command.Parameters.AddWithValue(to);
-        return Results.Ok(new { mileage = await command.ExecuteScalarAsync(ct) as int? });
-    }
-
-    private static Resource Check(string role, string name, char operation, bool allowVehicle = false)
-    {
-        if ((!allowVehicle && name == "vehicle") || !ResourceCatalog.Resources.TryGetValue(name, out var table))
+        if ((name == "vehicle" && operation != 'R') || !ResourceCatalog.Resources.TryGetValue(name, out var table))
             throw new DataFailure("RowNotFound", 404);
         if (!ResourceCatalog.Can(role, name, operation))
             throw new DataFailure("OperationDenied", 403);
@@ -173,10 +139,12 @@ internal static class DataRouting
         app.MapGet("/tables", (HttpContext ctx, DataEndpoints api) =>
             api.RunAsync(ctx, (role, _) => Task.FromResult(api.Catalog(role))));
         app.MapGet("/tables/{resource}", (HttpContext ctx, DataEndpoints api, string resource, string? q,
-            string? sort, bool? desc, int? page, string? relatedField, int? relatedId) =>
-            api.RunAsync(ctx, (role, ct) => api.ListAsync(role, resource, null, q, sort, desc, page, relatedField, relatedId, ct)));
+            string? sort, bool? desc, int? page, string? relatedField, int? relatedId, int? pageSize, string? fields,
+            bool? labels, int? afterId, string? latestBy, [FromQuery(Name = "filter")] string[] filters) =>
+            api.RunAsync(ctx, (role, ct) => api.ListAsync(role, resource, null, q, sort, desc, page,
+                relatedField, relatedId, pageSize, fields, labels, afterId, latestBy, filters, ct)));
         app.MapGet("/tables/{resource}/{id:int}", (HttpContext ctx, DataEndpoints api, string resource, int id) =>
-            api.RunAsync(ctx, (role, ct) => api.ListAsync(role, resource, id, null, null, null, null, null, null, ct)));
+            api.RunAsync(ctx, (role, ct) => api.ListAsync(role, resource, id, null, null, null, null, null, null, null, null, null, null, null, [], ct)));
         app.MapGet("/lookups/{resource}/{field}", (HttpContext ctx, DataEndpoints api, string resource,
             string field, string? q, int? selected) =>
             api.RunAsync(ctx, (role, ct) => api.LookupAsync(role, resource, field, q, selected, ct)));
@@ -187,9 +155,5 @@ internal static class DataRouting
             api.RunAsync(ctx, (role, ct) => api.SaveAsync(role, resource, id, values, ct)));
         app.MapDelete("/tables/{resource}/{id:int}", (HttpContext ctx, DataEndpoints api, string resource, int id) =>
             api.RunAsync(ctx, (role, ct) => api.DeleteAsync(role, resource, id, ct)));
-        app.MapGet("/vehicle-links/{id:int}", (HttpContext ctx, DataEndpoints api, int id) =>
-            api.RunAsync(ctx, (role, ct) => api.VehicleLinkAsync(role, id, ct)));
-        app.MapGet("/mileage", (HttpContext ctx, DataEndpoints api, int vehicleId, DateOnly from, DateOnly to) =>
-            api.RunAsync(ctx, (role, ct) => api.MileageAsync(role, vehicleId, from, to, ct)));
     }
 }

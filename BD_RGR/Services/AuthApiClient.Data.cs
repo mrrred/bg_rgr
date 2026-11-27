@@ -1,11 +1,19 @@
 using System.Net.Http;
+using System.Runtime.CompilerServices;
 using BD_RGR.Models;
 
 namespace BD_RGR.Services;
 
 public sealed partial class AuthApiClient
 {
-    public Task<BusinessResource[]> ResourcesAsync(Session session) => GetAsync<BusinessResource[]>(session, "tables");
+    private readonly ConditionalWeakTable<Session, ResourceCatalogRequest> _resourceCatalogs = new();
+
+    public Task<BusinessResource[]> ResourcesAsync(Session session, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return _resourceCatalogs.GetValue(session, static _ => new ResourceCatalogRequest())
+            .GetAsync(() => GetAsync<BusinessResource[]>(session, "tables"), cancellationToken);
+    }
 
     public Task<BusinessPage> TableAsync(Session session, string resource, string search, string sort, bool descending,
         int page, string? relatedField, int? relatedId)
@@ -24,11 +32,20 @@ public sealed partial class AuthApiClient
         GetAsync<LookupRow[]>(session, $"lookups/{resource}/{field}?q={Uri.EscapeDataString(search)}"
             + (selected is null ? "" : $"&selected={Uri.EscapeDataString(selected)}"), cancellationToken);
 
-    public Task<VehicleLink> VehicleLinkAsync(Session session, int id) =>
-        GetAsync<VehicleLink>(session, $"vehicle-links/{id}");
-
-    public Task<MileageResult> CalculateMileageAsync(Session session, int id, DateTime from, DateTime to) =>
-        GetAsync<MileageResult>(session, FormattableString.Invariant($"mileage?vehicleId={id}&from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}"));
+    internal Task<BusinessPage> ReadPageAsync(Session session, string resource, string fields, string[] filters,
+        int size, int page, int? afterId, string? sort, bool descending, string? latestBy, CancellationToken cancellationToken)
+    {
+        var url = $"tables/{resource}?labels=false&fields={Uri.EscapeDataString(fields)}&pageSize={size}&page={page}";
+        if (afterId is { } cursor)
+            url += $"&afterId={cursor}";
+        if (sort is not null)
+            url += $"&sort={Uri.EscapeDataString(sort)}&desc={descending}";
+        if (latestBy is not null)
+            url += $"&latestBy={Uri.EscapeDataString(latestBy)}";
+        foreach (var filter in filters)
+            url += $"&filter={Uri.EscapeDataString(filter)}";
+        return GetAsync<BusinessPage>(session, url, cancellationToken);
+    }
 
     public async Task<int> SaveRowAsync(Session session, string resource, int? id, Dictionary<string, string?> values)
     {
@@ -46,6 +63,24 @@ public sealed partial class AuthApiClient
     {
         using var response = await SendAsync(HttpMethod.Get, path, token: session.Token, cancellationToken: cancellationToken);
         return await ReadAsync<T>(response);
+    }
+
+    private sealed class ResourceCatalogRequest
+    {
+        private readonly object _gate = new();
+        private Task<BusinessResource[]>? _request;
+
+        public Task<BusinessResource[]> GetAsync(Func<Task<BusinessResource[]>> load, CancellationToken cancellationToken)
+        {
+            lock (_gate)
+            {
+                if (_request is null || _request.IsFaulted || _request.IsCanceled)
+                    _request = load();
+
+                // Closing one screen cancels its wait while other screens can still use the request.
+                return _request.WaitAsync(cancellationToken);
+            }
+        }
     }
 
     private sealed record SavedRow(int Id);

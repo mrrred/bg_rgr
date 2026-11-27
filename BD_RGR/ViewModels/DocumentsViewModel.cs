@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using BD_RGR.Models;
 using BD_RGR.Services;
 
@@ -6,8 +7,7 @@ namespace BD_RGR.ViewModels;
 
 public sealed class DocumentsViewModel : ViewModel, IDisposable
 {
-    private readonly AuthApiClient _api;
-    private readonly Session _session;
+    private readonly ResourceReports _reports;
     private readonly Action<AuthNotice> _sessionEnded;
     private string _template = "";
     private string _sql = "SELECT id, name FROM public.model ORDER BY id";
@@ -19,8 +19,7 @@ public sealed class DocumentsViewModel : ViewModel, IDisposable
 
     public DocumentsViewModel(AuthApiClient api, Session session, Action<AuthNotice> sessionEnded)
     {
-        _api = api;
-        _session = session;
+        _reports = new ResourceReports(api, session);
         _sessionEnded = sessionEnded;
         Translation.Current.LanguageChanged += LanguageChanged;
     }
@@ -58,25 +57,35 @@ public sealed class DocumentsViewModel : ViewModel, IDisposable
     {
         ShowResult(null);
         var template = _template;
-        var result = await _api.ReportAsync(_session, template, IsManual ? Sql : null);
+        var result = await _reports.RunAsync(template, Sql);
         if (template != _template)
             return;
         ShowResult(result);
         _notice = new(result.Truncated ? "ReportTruncated" : result.Rows.Length == 0 ? "NoRows" : "ReportReady");
     });
 
-    public async Task<byte[]?> CsvAsync(string language)
+    public byte[]? CreateCsv()
     {
-        if (!CanExport)
+        if (!CanExport || _result is not { } result)
             return null;
-        byte[]? bytes = null;
-        var previousNotice = _notice;
-        await ExecuteAsync(async () =>
-        {
-            bytes = await _api.ReportCsvAsync(_session, _result!.Id, language);
-            _notice = previousNotice;
-        });
-        return bytes;
+        var text = Translation.Current;
+        var separator = text.Culture.TextInfo.ListSeparator;
+        var csv = new StringBuilder();
+        csv.AppendJoin(separator, result.Columns.Select(column =>
+            Escape(column.TitleKey is { } key ? text[key] : column.Name, protect: true))).Append("\r\n");
+        foreach (var row in Rows)
+            csv.AppendJoin(separator, result.Columns.Select((column,index) =>
+                Escape(row[index], protect: column.Kind != "number"))).Append("\r\n");
+        return [.. Encoding.UTF8.GetPreamble(), .. Encoding.UTF8.GetBytes(csv.ToString())];
+    }
+
+    private static string Escape(string value, bool protect)
+    {
+        var prefix = value.AsSpan().TrimStart();
+        if (protect && (value.StartsWith('\t') || value.StartsWith('\r') || value.StartsWith('\n') ||
+            (prefix.Length > 0 && prefix[0] is '=' or '+' or '-' or '@')))
+            value = "'" + value;
+        return "\"" + value.Replace("\"", "\"\"") + "\"";
     }
 
     public void ShowFileError()

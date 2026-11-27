@@ -11,36 +11,35 @@ internal static class TableQueries
 {
     internal const int PageSize = 50;
 
-    public static async Task<TablePage> ListAsync(NpgsqlConnection connection, Resource table, int page,
-        string search, string? sort, bool descending, int? id, Field? relatedField, int? relatedId, CancellationToken ct)
+    public static async Task<TablePage> ListAsync(NpgsqlConnection connection, Resource table, ResourceRead query,
+        string search, int? id, Field? relatedField, int? relatedId, CancellationToken ct)
     {
-        var fields = table.DisplayFields.ToArray();
+        var fields = query.Fields;
         var data = fields.Select(f => Column(table, f)).ToArray();
         var from = Source(table);
-        var labels = new string[fields.Length];
-        for (var i = 0; i < fields.Length; i++)
+        var labels = new Dictionary<Field, string>();
+        var labelFields = search.Length > 0 ? table.DisplayFields : query.Labels
+            ? fields.Concat(query.Sort is { } sort ? [sort] : []) : [];
+        foreach (var field in labelFields.Where(field => field.Target is not null).Distinct())
         {
-            labels[i] = data[i];
-            if (fields[i].Target is not { } target)
-                continue;
-
+            var target = field.Target!;
             var reference = ResourceCatalog.Resources[target];
-            var alias = $"ref{i}";
-            var vehicleAlias = $"ref_vehicle{i}";
-            from += $" LEFT JOIN public.{target} {alias} ON {alias}.id = {data[i]}";
+            var alias = $"ref{labels.Count}";
+            var vehicleAlias = $"ref_vehicle{labels.Count}";
+            from += $" LEFT JOIN public.{target} {alias} ON {alias}.id = {Column(table, field)}";
             if (reference.IsVehicleSubtype)
                 from += $" LEFT JOIN public.vehicle {vehicleAlias} ON {vehicleAlias}.id = {alias}.vehicle_id";
 
             var visibleAlias = reference.IsVehicleSubtype ? vehicleAlias : alias;
-            labels[i] = $"CASE WHEN {visibleAlias}.id IS NOT NULL THEN {Label(reference, alias, vehicleAlias)} END";
+            labels[field] = $"CASE WHEN {visibleAlias}.id IS NOT NULL THEN {Label(reference, alias, vehicleAlias)} END";
         }
-        var sortIndex = Array.FindIndex(fields, f => f.Name == sort);
-        var order = sortIndex < 0 ? "t.id" : labels[sortIndex];
-        if (sortIndex >= 0 && fields[sortIndex].Kind is "text" or "reference")
+        string Display(Field field) => labels.GetValueOrDefault(field) ?? Column(table, field);
+        var order = query.Sort is { } sortBy ? query.Labels ? Display(sortBy) : Column(table, sortBy) : "t.id";
+        if (query.Sort?.Kind == "text" || (query.Labels && query.Sort?.Kind == "reference"))
             order = $"({order}) COLLATE pg_catalog.\"unicode\"";
-        var select = string.Join(", ", data.Select(x => $"({x})::text").Concat(
-            fields.Select((f, i) => f.Target is null ? "NULL::text" : labels[i])));
-        var searchColumns = labels.Select((value, i) => SearchExpression(fields[i], value)).Prepend("t.id::text");
+        var references = query.Labels ? fields.Where(labels.ContainsKey).ToArray() : [];
+        var select = string.Join(", ", data.Select((column, index) => $"({column})::text AS value{index}")
+            .Concat(references.Select((field, index) => $"{labels[field]} AS label{index}")).Prepend("t.id AS row_id"));
         var conditions = new List<string>();
         await using var command = new NpgsqlCommand { Connection = connection };
         if (id is { } rowId)
@@ -55,16 +54,33 @@ internal static class TableQueries
         }
         if (search.Length > 0)
         {
+            var searchColumns = table.DisplayFields.Select(field => SearchExpression(field, Display(field))).Prepend("t.id::text");
             conditions.Add($"strpos(lower(concat_ws(' ', {string.Join(", ", searchColumns)}) COLLATE pg_catalog.\"unicode\"), lower(@search COLLATE pg_catalog.\"unicode\")) > 0");
             command.Parameters.AddWithValue("search", search);
         }
+        for (var i = 0; i < query.Filters.Length; i++)
+            conditions.Add(ResourceRead.Condition(command, table, query.Filters[i], i));
+        if (query.AfterId is { } afterId)
+        {
+            conditions.Add("t.id > @afterId");
+            command.Parameters.AddWithValue("afterId", afterId);
+        }
         var where = conditions.Count == 0 ? "" : " WHERE " + string.Join(" AND ", conditions);
-        command.CommandText = $"""
-            SELECT t.id, {select} FROM {from}{where}
-            ORDER BY {order} {(descending ? "DESC" : "ASC")} NULLS LAST, t.id
-            LIMIT {PageSize + 1} OFFSET @offset
-            """;
-        command.Parameters.AddWithValue("offset", (long)page * PageSize);
+        var direction = query.Descending ? "DESC" : "ASC";
+        var sql = $"SELECT {select} FROM {from}{where} ORDER BY {order} {direction} NULLS LAST, t.id";
+        if (query.LatestBy is { } latestBy)
+        {
+            var group = Column(table, latestBy);
+            sql = $"""
+                SELECT * FROM (
+                    SELECT DISTINCT ON ({group}) {select}, {order} AS sort_value FROM {from}{where}
+                    ORDER BY {group}, {order} {direction} NULLS LAST, t.id DESC
+                ) AS grouped ORDER BY sort_value {direction} NULLS LAST, row_id
+                """;
+        }
+        command.CommandText = $"{sql} LIMIT @limit OFFSET @offset";
+        command.Parameters.AddWithValue("limit", query.PageSize + 1);
+        command.Parameters.AddWithValue("offset", (long)query.Page * query.PageSize);
 
         var rows = new List<TableRow>();
         await using var reader = await command.ExecuteReaderAsync(ct);
@@ -73,20 +89,18 @@ internal static class TableQueries
             var values = new Dictionary<string, string?>();
             var links = new Dictionary<string, string?>();
             for (var i = 0; i < fields.Length; i++)
-            {
                 values[fields[i].Name] = reader.IsDBNull(i + 1) ? null : reader.GetString(i + 1);
-                if (fields[i].Target is not null)
-                {
-                    var labelIndex = 1 + fields.Length + i;
-                    links[fields[i].Name] = reader.IsDBNull(labelIndex) ? null : reader.GetString(labelIndex);
-                }
+            for (var i = 0; i < references.Length; i++)
+            {
+                var index = 1 + fields.Length + i;
+                links[references[i].Name] = reader.IsDBNull(index) ? null : reader.GetString(index);
             }
             rows.Add(new(reader.GetInt32(0), values, links));
         }
-        var hasMore = rows.Count > PageSize;
+        var hasMore = rows.Count > query.PageSize;
         if (hasMore)
-            rows.RemoveAt(PageSize);
-        return new(page, hasMore, rows);
+            rows.RemoveAt(query.PageSize);
+        return new(query.Page, hasMore, rows);
     }
 
     public static async Task<List<LookupValue>> LookupAsync(NpgsqlConnection connection, Resource target, string query,
@@ -119,7 +133,7 @@ internal static class TableQueries
         ? $"public.{resource.Name} t JOIN public.vehicle v ON v.id = t.vehicle_id"
         : $"public.{resource.Name} t";
 
-    private static string Column(Resource table, Field field) =>
+    internal static string Column(Resource table, Field field) =>
         $"{(table.IsVehicleSubtype && ResourceCatalog.Vehicle.Fields.Contains(field) ? "v" : "t")}.{field.Name}";
 
     private static string Label(Resource target, string a, string vehicle)

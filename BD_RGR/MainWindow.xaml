@@ -19,6 +19,62 @@
                 </TextBlock>
             </RadioButton>
         </DataTemplate>
+        <DataTemplate x:Key="SidebarAnalytics">
+            <Expander Foreground="{DynamicResource SidebarTextBrush}" Margin="0,0,0,10"
+                      IsExpanded="{Binding DataContext.AnalyticsExpanded, RelativeSource={RelativeSource AncestorType=Window}, Mode=TwoWay}">
+                <Expander.Header>
+                    <TextBlock Text="{loc:Loc Analytics}" FontSize="{DynamicResource UiLabelSize}"
+                               FontWeight="SemiBold" TextWrapping="Wrap" />
+                </Expander.Header>
+                <StackPanel Margin="12,4,4,0"
+                            DataContext="{Binding DataContext.Analytics, RelativeSource={RelativeSource AncestorType=Window}}">
+                    <ItemsControl ItemsSource="{Binding Groups}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel>
+                                    <TextBlock Foreground="{DynamicResource SidebarTextBrush}" FontSize="{DynamicResource UiLabelSize}"
+                                               FontWeight="SemiBold" TextWrapping="Wrap" Margin="8,10,0,4">
+                                        <TextBlock.Text>
+                                            <MultiBinding Converter="{StaticResource TranslateKey}">
+                                                <Binding Path="TitleKey" />
+                                                <Binding Path="Language" Source="{x:Static loc:Translation.Current}" />
+                                            </MultiBinding>
+                                        </TextBlock.Text>
+                                    </TextBlock>
+                                    <ItemsControl ItemsSource="{Binding Links}" ItemTemplate="{StaticResource SidebarEntry}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="{Binding Status}" Foreground="{DynamicResource SidebarTextBrush}" TextWrapping="Wrap"
+                               AutomationProperties.LiveSetting="Polite" Margin="8,4,0,4">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasGroups}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+            </Expander>
+        </DataTemplate>
+        <DataTemplate x:Key="SidebarPage">
+            <ContentControl Content="{Binding}" Focusable="False">
+                <ContentControl.Style>
+                    <Style TargetType="ContentControl">
+                        <Setter Property="ContentTemplate" Value="{StaticResource SidebarEntry}" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding TitleKey}" Value="Analytics">
+                                <Setter Property="ContentTemplate" Value="{StaticResource SidebarAnalytics}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ContentControl.Style>
+            </ContentControl>
+        </DataTemplate>
     </Window.Resources>
 
     <Grid>
@@ -75,7 +131,7 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                        <ItemsControl ItemsSource="{Binding Pages}" ItemTemplate="{StaticResource SidebarEntry}" />
+                        <ItemsControl ItemsSource="{Binding Pages}" ItemTemplate="{StaticResource SidebarPage}" />
                     </StackPanel>
                 </ScrollViewer>
 

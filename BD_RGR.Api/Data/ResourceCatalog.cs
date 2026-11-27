@@ -20,6 +20,8 @@ internal sealed record EnumChoice(string Value, string TitleKey, string English)
 internal sealed record Resource(string Name, string TitleKey, Field[] Fields, bool IsVehicleSubtype = false)
 {
     public IEnumerable<Field> DisplayFields => IsVehicleSubtype ? ResourceCatalog.Vehicle.Fields.Concat(Fields) : Fields;
+    public IEnumerable<Field> ReadFields => IsVehicleSubtype ? DisplayFields.Append(VehicleId) : DisplayFields;
+    private static readonly Field VehicleId = new("vehicle_id", "Vehicle", "reference", Target: "vehicle");
 }
 
 internal static class ResourceCatalog

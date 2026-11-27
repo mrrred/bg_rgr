@@ -11,4 +11,3 @@ public sealed record BusinessRow(int Id, Dictionary<string, string?> Values, Dic
 public sealed record BusinessPage(int Page, bool HasMore, BusinessRow[] Rows);
 public sealed record LookupRow(int Id, string Label);
 public sealed record VehicleLink(string Resource, int Id);
-public sealed record MileageResult(int? Mileage);

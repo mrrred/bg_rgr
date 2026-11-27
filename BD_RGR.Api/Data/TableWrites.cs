@@ -155,7 +155,7 @@ internal static class TableWrites
         return $"@{name}::{cast ?? field.Cast}";
     }
 
-    private static string? Validate(Field field, string? input)
+    internal static string? Validate(Field field, string? input)
     {
         var value = input?.Trim();
         if (string.IsNullOrEmpty(value))

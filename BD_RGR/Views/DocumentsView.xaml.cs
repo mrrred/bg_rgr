@@ -64,7 +64,7 @@ public partial class DocumentsView : UserControl
 
         try
         {
-            if (await model.CsvAsync(text.Language) is { } content)
+            if (model.CreateCsv() is { } content)
                 await File.WriteAllBytesAsync(dialog.FileName, content);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)

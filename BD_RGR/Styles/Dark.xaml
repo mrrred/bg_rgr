@@ -17,6 +17,9 @@
     <SolidColorBrush x:Key="ErrorBrush" Color="#FFA8AE" />
     <SolidColorBrush x:Key="LinkBrush" Color="#94D9C6" />
     <SolidColorBrush x:Key="ChartBarBrush" Color="#6CC3AA" />
+    <SolidColorBrush x:Key="ChartSecondBrush" Color="#87ADF0" />
+    <SolidColorBrush x:Key="ChartThirdBrush" Color="#F1B96F" />
+    <SolidColorBrush x:Key="ChartFourthBrush" Color="#CDA3E7" />
     <SolidColorBrush x:Key="ChartMarkerBrush" Color="#C4F087" />
     <SolidColorBrush x:Key="StatusNormalBrush" Color="#72C8AC" />
     <SolidColorBrush x:Key="StatusAttentionBrush" Color="#FFAD7B" />

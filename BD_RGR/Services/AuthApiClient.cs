@@ -107,7 +107,7 @@ public sealed partial class AuthApiClient : IDisposable
                         or "RowNotFound" or "DuplicateRow" or "ValidationFailed" or "HasDependencies"
                         or "OperationDenied" or "AmbiguousVehicle" or "InvalidPeriod" or "ReportInvalidSql"
                         or "ReportSourceDenied" or "ReportFunctionDenied" or "ReportTooManyColumns" or "ReportingRoleMismatch"
-                        or "ReportTimeout" or "ReportResultExpired" or "AnalyticsPeriodInvalid" => new AuthApiException(error.Code, error.Field),
+                        or "ReportTimeout" or "AnalyticsPeriodInvalid" => new AuthApiException(error.Code, error.Field),
                     _ => new AuthApiException("ApiUnexpectedResponse")
                 };
             }

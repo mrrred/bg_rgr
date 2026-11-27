@@ -23,14 +23,11 @@ builder.Services.AddSingleton<AuthEndpoints>();
 builder.Services.AddSingleton<BusinessDatabase>();
 builder.Services.AddSingleton<DataEndpoints>();
 builder.Services.AddSingleton<ReportingDatabase>();
-builder.Services.AddSingleton<ReportResults>();
-builder.Services.AddSingleton<CsvReport>();
-builder.Services.AddSingleton<ReportEndpoints>();
 
 var app = builder.Build();
 app.MapAuthEndpoints();
 app.MapDataEndpoints();
-app.MapReportEndpoints();
+app.MapSelectQueries();
 await app.RunAsync();
 
 static string FindLocalSettings(string contentRoot)

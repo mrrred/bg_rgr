@@ -9,8 +9,10 @@ public sealed class MainViewModel : ViewModel, IDisposable
 {
     private readonly AuthApiClient _accounts;
     private readonly Action<string, AuthNotice?> _returnToSignIn;
+    private readonly MenuEntry _analyticsEntry;
     private MenuEntry _activeEntry = null!;
     private bool _isAccountBusy;
+    private bool _analyticsExpanded;
     private AuthNotice? _accountNotice;
 
     public MainViewModel(Session session, AuthApiClient accounts, ProfileSettings preferences,
@@ -21,13 +23,14 @@ public sealed class MainViewModel : ViewModel, IDisposable
         _returnToSignIn = returnToSignIn;
         Preferences = preferences;
         BackToMenu = new Command(() => _activeEntry.Parent?.Activate.Execute(null));
-        Analytics = new AnalyticsViewModel(accounts, session, EndSession);
+        Analytics = new AnalyticsViewModel(accounts, session, EndSession, OpenDashboard);
         Documents = new DocumentsViewModel(accounts, session, EndSession);
         Documents.PropertyChanged += DocumentsChanged;
         DataTable = new BusinessTableViewModel(accounts, session, notice => _returnToSignIn(Session.Username, notice));
         DataTable.PropertyChanged += TableChanged;
         Menu = WorkspaceMenu.CreateGroups(session.Role, Activate);
         Pages = WorkspaceMenu.CreatePages(session.Role, Activate);
+        _analyticsEntry = Pages.Single(page => page.TitleKey == "Analytics");
         Translation.Current.LanguageChanged += OnLanguageChanged;
         Activate(Menu[0].Entries[0]);
     }
@@ -46,6 +49,15 @@ public sealed class MainViewModel : ViewModel, IDisposable
     public bool ShowsSettings => _activeEntry.TitleKey == "Settings";
     public bool ShowsDocuments => DocumentsViewModel.TemplateFor(_activeEntry.TitleKey) is not null;
     public bool ShowsAnalytics => _activeEntry.TitleKey == "Analytics";
+    public bool AnalyticsExpanded
+    {
+        get => _analyticsExpanded;
+        set
+        {
+            if (Set(ref _analyticsExpanded, value) && value)
+                _ = Analytics.LoadMenuAsync();
+        }
+    }
     public bool ShowsHelp => _activeEntry.TitleKey == "UserGuide";
     public bool ShowsAbout => _activeEntry.TitleKey == "About";
     public bool ShowsPasswordChange => _activeEntry.TitleKey == "ChangePassword";
@@ -124,10 +136,20 @@ public sealed class MainViewModel : ViewModel, IDisposable
         }
     }
 
-    private async void Activate(MenuEntry entry)
+    private async void Activate(MenuEntry entry) => await ActivateAsync(entry);
+
+    private Task OpenDashboard(string screen) => ActivateAsync(_analyticsEntry, screen);
+
+    private async Task ActivateAsync(MenuEntry entry, string? dashboard = null)
     {
-        if (!CanNavigate || _activeEntry == entry)
+        if (!CanNavigate)
             return;
+        if (_activeEntry == entry)
+        {
+            if (dashboard is not null)
+                await Analytics.StartAsync(dashboard);
+            return;
+        }
 
         if (_activeEntry is not null)
         {
@@ -158,7 +180,7 @@ public sealed class MainViewModel : ViewModel, IDisposable
         if (DocumentsViewModel.TemplateFor(entry.TitleKey) is { } template)
             Documents.Open(template);
         if (ShowsAnalytics)
-            await Analytics.StartAsync();
+            await Analytics.StartAsync(dashboard);
 
         if (entry.IsResource && DataTable.Resource?.TitleKey != entry.TitleKey)
             await DataTable.OpenAsync(entry.TitleKey);

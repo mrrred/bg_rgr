@@ -200,7 +200,20 @@ public sealed class BusinessTableViewModel : ViewModel, IDisposable
 
         if (target == "vehicle")
         {
-            var link = await _api.VehicleLinkAsync(_session, id);
+            var reader = new ResourceReader(_api, _session);
+            var matches = await Task.WhenAll(_catalog!.Where(resource => resource.IsVehicleSubtype).Select(async resource =>
+            {
+                var rows = await reader.PageAsync(resource.Name, "id", CancellationToken.None,
+                    [$"vehicle_id:eq:{ResourceReader.Id(id)}"], size: 1);
+                return rows.Rows.Select(row => new VehicleLink(resource.Name, row.Id));
+            }));
+            var links = matches.SelectMany(items => items).ToArray();
+            var link = links.Length switch
+            {
+                1 => links[0],
+                0 => throw new AuthApiException("RowNotFound"),
+                _ => throw new AuthApiException("AmbiguousVehicle")
+            };
             target = link.Resource;
             id = link.Id;
         }
@@ -230,9 +243,15 @@ public sealed class BusinessTableViewModel : ViewModel, IDisposable
             || FromDate is not { } from || ToDate is not { } to || from > to)
             throw new AuthApiException("InvalidPeriod");
 
-        var result = await _api.CalculateMileageAsync(_session, id, from, to);
-        if (result.Mileage is { } mileage)
-            SetStatus(new("MileageResult"), mileage.ToString("N0", Translation.Current.Culture));
+        var reader = new ResourceReader(_api, _session);
+        Task<BusinessPage> Last(DateTime date) => reader.PageAsync("vehicle_mileage_log", "mileage", CancellationToken.None,
+            [$"vehicle_id:eq:{ResourceReader.Id(id)}", $"reading_date:lte:{ResourceReader.BoundsDate(DateOnly.FromDateTime(date))}"],
+            size: 1, sort: "reading_date", descending: true);
+        var first = Last(from);
+        var last = from == to ? first : Last(to);
+        await Task.WhenAll(first, last);
+        if (first.Result.Rows.FirstOrDefault() is { } start && last.Result.Rows.FirstOrDefault() is { } end)
+            SetStatus(new("MileageResult"), (end.Decimal("mileage") - start.Decimal("mileage")).ToString("N0", Translation.Current.Culture));
         else
             SetStatus(new("MileageUnavailable"));
     });
