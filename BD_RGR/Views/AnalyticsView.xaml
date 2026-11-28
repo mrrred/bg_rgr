@@ -140,7 +140,15 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
 
-            <ItemsControl ItemsSource="{Binding HeatTables}" ItemTemplate="{StaticResource DashboardTablePanel}" />
+            <ItemsControl ItemsSource="{Binding HeatTables}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Style="{StaticResource Card}" Padding="8" Margin="0,0,8,8">
+                            <views:DashboardChartView HeatTable="{Binding}" />
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
             <ItemsControl x:Name="ChartPanels" ItemsSource="{Binding Charts}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
@@ -151,20 +159,16 @@
                     <DataTemplate>
                         <Border Style="{StaticResource Card}" Padding="8" Margin="0,0,8,8">
                             <StackPanel>
-                                <views:AnalyticsChart Height="295" Plot="{Binding}" DrillRequested="Chart_DrillRequested"
-                                                      Scope="{Binding DataContext.ChartScope, RelativeSource={RelativeSource AncestorType=views:AnalyticsView}}"
-                                                      TextSize="{DynamicResource UiFontSize}" Paper="{DynamicResource PaperBrush}"
-                                                      Ink="{DynamicResource InkBrush}" GridLine="{DynamicResource BorderBrush}"
-                                                      Bars="{DynamicResource ChartBarBrush}" Second="{DynamicResource ChartSecondBrush}"
-                                                      Third="{DynamicResource ChartThirdBrush}" Fourth="{DynamicResource ChartFourthBrush}">
+                                <views:DashboardChartView x:Name="Chart" Height="320" Plot="{Binding}" DrillRequested="Chart_DrillRequested"
+                                                          Scope="{Binding DataContext.ChartScope, RelativeSource={RelativeSource AncestorType=views:AnalyticsView}}">
                                     <AutomationProperties.Name>
                                         <MultiBinding Converter="{StaticResource TranslateKey}">
                                             <Binding Path="TitleKey" />
                                             <Binding Path="Language" Source="{x:Static loc:Translation.Current}" />
                                         </MultiBinding>
                                     </AutomationProperties.Name>
-                                </views:AnalyticsChart>
-                                <Button Content="{loc:Loc ExportChart}" IsEnabled="{Binding HasValues}" Click="Export_Click"
+                                </views:DashboardChartView>
+                                <Button Content="{loc:Loc ExportChart}" IsEnabled="{Binding HasValues}" Click="Export_Click" Tag="{Binding ElementName=Chart}"
                                         HorizontalAlignment="Right" Margin="0,4,0,0" />
                             </StackPanel>
                         </Border>

@@ -51,16 +51,21 @@ internal sealed partial class DashboardData
         var fleet = await ScopedFleet(b, ct);
         var selected = fleet.FirstOrDefault(row => ResourceReader.Id(row.Id) == b.Value("vehicle")) ?? fleet.FirstOrDefault();
         b.Vehicle = selected is null ? null : ResourceReader.Id(selected.Id);
-        var first = ReadBounds(fleet, b.From, ct);
-        var last = b.From == b.To ? first : ReadBounds(fleet, b.To, ct);
+        var vehicleIds = fleet.Select(row => row.Id).ToArray();
+        var first = ReadBounds(vehicleIds, b.From, ct);
+        var last = b.From == b.To ? first : ReadBounds(vehicleIds, b.To, ct);
         var readings = selected is null ? Task.FromResult(Array.Empty<BusinessRow>()) :
             _reader.AllAsync("vehicle_mileage_log", "reading_date,mileage", ct, b.Period("reading_date")
                 .Append($"vehicle_id:eq:{ResourceReader.Id(selected.Id)}").ToArray());
         await Task.WhenAll(first, last, readings);
+        var starts = first.Result;
+        var ends = last.Result;
+        var earliest = await ReadMileageByVehicle(ends.Keys.Where(id => !starts.ContainsKey(id)),
+            descending: false, ct, b.Period("reading_date"));
         var bounds = fleet.Select(row =>
         {
-            var start = first.Result.GetValueOrDefault(row.Id);
-            var end = last.Result.GetValueOrDefault(row.Id);
+            var start = starts.GetValueOrDefault(row.Id) ?? earliest.GetValueOrDefault(row.Id);
+            var end = ends.GetValueOrDefault(row.Id);
             var a = start?.Date("reading_date");
             var z = end?.Date("reading_date");
             return new MileageItem(row, a, z, a < z ? end!.Decimal("mileage") - start!.Decimal("mileage") : null);
@@ -69,7 +74,7 @@ internal sealed partial class DashboardData
         b.Cards.Add(new("DashboardDistance", current?.Distance, Km, null, null, null, current?.Start, current?.End));
         b.Card("DashboardReadings", readings.Result.Length);
         var visible = readings.Result.AsEnumerable();
-        if (selected is not null && first.Result.TryGetValue(selected.Id, out var before) && before.Date("reading_date") < b.From)
+        if (selected is not null && starts.TryGetValue(selected.Id, out var before) && before.Date("reading_date") < b.From)
             visible = visible.Prepend(before);
         var series = visible.OrderBy(row => row.Date("reading_date")).ToArray();
         b.Chart("DashboardOdometer", "line", Km, series.Select(row =>
@@ -83,13 +88,17 @@ internal sealed partial class DashboardData
 
     private sealed record MileageItem(FleetRow Vehicle, DateOnly? Start, DateOnly? End, decimal? Distance);
 
-    private async Task<Dictionary<int, BusinessRow>> ReadBounds(FleetRow[] rows, DateOnly date, CancellationToken ct)
+    private Task<Dictionary<int, BusinessRow>> ReadBounds(IEnumerable<int> ids, DateOnly date, CancellationToken ct) =>
+        ReadMileageByVehicle(ids, descending: true, ct, $"reading_date:lte:{ResourceReader.BoundsDate(date)}");
+
+    private async Task<Dictionary<int, BusinessRow>> ReadMileageByVehicle(IEnumerable<int> ids, bool descending,
+        CancellationToken ct, params string[] filters)
     {
         var result = new Dictionary<int, BusinessRow>();
-        foreach (var batch in rows.Select(row => ResourceReader.Id(row.Id)).Chunk(150))
+        foreach (var batch in ids.Select(ResourceReader.Id).Chunk(150))
         {
             var readings = await _reader.RepresentativesAsync("vehicle_mileage_log", "vehicle_id,reading_date,mileage", "reading_date",
-                "vehicle_id", ct, $"reading_date:lte:{ResourceReader.BoundsDate(date)}", $"vehicle_id:in:{string.Join(',', batch)}");
+                "vehicle_id", descending, ct, [.. filters, $"vehicle_id:in:{string.Join(',', batch)}"]);
             foreach (var row in readings)
                 result[row.Int("vehicle_id")] = row;
         }

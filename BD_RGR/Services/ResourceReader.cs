@@ -25,8 +25,8 @@ internal sealed class ResourceReader(AuthApiClient api, Session session)
         api.ReadAsync(session, resource, fields, filters ?? [], limit, sort, descending, null, ct);
 
     public async Task<BusinessRow[]> RepresentativesAsync(string resource, string fields, string sort, string group,
-        CancellationToken ct, params string[] filters) =>
-        (await api.ReadAsync(session, resource, fields, filters, null, sort, true, group, ct)).Rows;
+        bool descending, CancellationToken ct, params string[] filters) =>
+        (await api.ReadAsync(session, resource, fields, filters, null, sort, descending, group, ct)).Rows;
 
     internal static string BoundsDate(DateOnly value) => value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
     internal static string Id(int value) => value.ToString(CultureInfo.InvariantCulture);

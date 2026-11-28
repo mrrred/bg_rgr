@@ -165,8 +165,7 @@ public sealed class AnalyticsViewModel : ViewModel, IDisposable
         if (_current is not { } current)
             return Task.CompletedTask;
         var request = Draft();
-        _invalidPeriod = HasPeriod && (request.From is not { } from || request.To is not { } to ||
-            to < from || to.DayNumber - from.DayNumber >= 366);
+        _invalidPeriod = HasPeriod && (request.From is not { } from || request.To is not { } to || to < from);
         ErrorChanged();
         return _invalidPeriod ? Task.CompletedTask : RefreshAsync(current, request, commit: true);
     }
@@ -229,7 +228,7 @@ public sealed class AnalyticsViewModel : ViewModel, IDisposable
     }
 
     private Task RefreshAsync(ScreenState state, DashboardRequest request, bool commit) =>
-        RunAsync(token => LoadAsync(state, request, commit, token));
+        RunAsync(token => LoadAsync(state, request, commit, token), keepFiltersEnabled: !commit);
 
     private async Task LoadAsync(ScreenState state, DashboardRequest request, bool commit, CancellationToken token)
     {
@@ -244,7 +243,7 @@ public sealed class AnalyticsViewModel : ViewModel, IDisposable
                 token.ThrowIfCancellationRequested();
                 request.Values["vehicle"] = result.SelectedVehicle;
                 if (!commit)
-                    SetDraft(state, Draft());
+                    UpdateVehicles(Filters.FirstOrDefault(filter => filter.Name == "vehicle")?.Value);
             }
         }
         if (commit || state.Applied is null)
@@ -264,14 +263,15 @@ public sealed class AnalyticsViewModel : ViewModel, IDisposable
         Notify(nameof(ChartScope));
     }
 
-    private async Task RunAsync(Func<CancellationToken, Task> action)
+    private async Task RunAsync(Func<CancellationToken, Task> action, bool keepFiltersEnabled = false)
     {
         if (_disposed)
             return;
         _operation?.Cancel();
         using var operation = new CancellationTokenSource();
         _operation = operation;
-        IsReady = false;
+        if (!keepFiltersEnabled)
+            IsReady = false;
         _notice = _current?.Result is null ? new("AuthWorking") : null;
         Notify(nameof(Status));
         try

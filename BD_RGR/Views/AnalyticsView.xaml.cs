@@ -73,16 +73,15 @@ public partial class AnalyticsView : UserControl
             await model.ResetAsync();
     }
 
-    private async void Chart_DrillRequested(object sender, DashboardDrillEventArgs e)
+    private async void Chart_DrillRequested(string filter, string choice)
     {
         if (Model is { } model)
-            await model.DrillAsync(e.Filter, e.Choice);
+            await model.DrillAsync(filter, choice);
     }
 
     private void Export_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { Parent: StackPanel panel } || Model is not { } model ||
-            panel.Children.OfType<AnalyticsChart>().SingleOrDefault() is not { Plot.HasValues: true } chart)
+        if (sender is not Button { Tag: DashboardChartView { Plot.HasValues: true } chart } || Model is not { } model)
             return;
         var text = Translation.Current;
         var dialog = new SaveFileDialog
@@ -101,10 +100,7 @@ public partial class AnalyticsView : UserControl
         try
         {
             using var file = File.Create(dialog.FileName);
-            if (extension == ".pdf")
-                chart.SavePdf(file);
-            else
-                chart.SavePng(file);
+            chart.Export(file, pdf: extension == ".pdf");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {

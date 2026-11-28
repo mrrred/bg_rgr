@@ -37,7 +37,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $apiExe = Join-Path $apiDirectory 'bin\Debug\net8.0\BD_RGR.Api.exe'
-$clientExe = Join-Path $clientDirectory 'bin\Debug\net8.0-windows\BD_RGR.exe'
+$clientExe = Join-Path $clientDirectory 'bin\Debug\net8.0-windows10.0.19041.0\BD_RGR.exe'
 $api = Start-Process -FilePath $apiExe -ArgumentList @('--ApiPort', "$apiPort") `
     -WorkingDirectory $apiDirectory -NoNewWindow -PassThru
 
