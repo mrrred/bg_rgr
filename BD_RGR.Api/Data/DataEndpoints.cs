@@ -59,13 +59,13 @@ internal sealed class DataEndpoints(AccountsDatabase accounts, SessionStore sess
         }));
 
     public async Task<IResult> ListAsync(string role, string resource, int? id, string? q, string? sort,
-        bool? desc, int? page, string? relatedField, int? relatedId, int? pageSize, string? fields,
+        bool? desc, int? limit, long? offset, string? relatedField, int? relatedId, string? fields,
         bool? labels, int? afterId, string? latestBy, string[] filters, CancellationToken ct)
     {
         var table = Check(role, resource, 'R');
         if (id is <= 0)
             throw new DataFailure("InvalidField");
-        var read = ResourceRead.Parse(table, page, pageSize, fields, labels, sort, desc, afterId, latestBy, filters);
+        var read = ResourceRead.Parse(table, limit, offset, fields, labels, sort, desc, afterId, latestBy, filters);
 
         Field? filter = null;
         Resource? related = null;
@@ -139,10 +139,10 @@ internal static class DataRouting
         app.MapGet("/tables", (HttpContext ctx, DataEndpoints api) =>
             api.RunAsync(ctx, (role, _) => Task.FromResult(api.Catalog(role))));
         app.MapGet("/tables/{resource}", (HttpContext ctx, DataEndpoints api, string resource, string? q,
-            string? sort, bool? desc, int? page, string? relatedField, int? relatedId, int? pageSize, string? fields,
+            string? sort, bool? desc, int? limit, long? offset, string? relatedField, int? relatedId, string? fields,
             bool? labels, int? afterId, string? latestBy, [FromQuery(Name = "filter")] string[] filters) =>
-            api.RunAsync(ctx, (role, ct) => api.ListAsync(role, resource, null, q, sort, desc, page,
-                relatedField, relatedId, pageSize, fields, labels, afterId, latestBy, filters, ct)));
+            api.RunAsync(ctx, (role, ct) => api.ListAsync(role, resource, null, q, sort, desc, limit, offset,
+                relatedField, relatedId, fields, labels, afterId, latestBy, filters, ct)));
         app.MapGet("/tables/{resource}/{id:int}", (HttpContext ctx, DataEndpoints api, string resource, int id) =>
             api.RunAsync(ctx, (role, ct) => api.ListAsync(role, resource, id, null, null, null, null, null, null, null, null, null, null, null, [], ct)));
         app.MapGet("/lookups/{resource}/{field}", (HttpContext ctx, DataEndpoints api, string resource,

@@ -5,11 +5,11 @@ namespace BD_RGR.Api.Data;
 
 internal sealed record TableRow(int Id, Dictionary<string, string?> Values, Dictionary<string, string?> Labels);
 internal sealed record LookupValue(int Id, string Label);
-internal sealed record TablePage(int Page, bool HasMore, List<TableRow> Rows);
+internal sealed record TablePage(bool HasMore, List<TableRow> Rows);
 
 internal static class TableQueries
 {
-    internal const int PageSize = 50;
+    private const int LookupLimit = 50;
 
     public static async Task<TablePage> ListAsync(NpgsqlConnection connection, Resource table, ResourceRead query,
         string search, int? id, Field? relatedField, int? relatedId, CancellationToken ct)
@@ -78,9 +78,17 @@ internal static class TableQueries
                 ) AS grouped ORDER BY sort_value {direction} NULLS LAST, row_id
                 """;
         }
-        command.CommandText = $"{sql} LIMIT @limit OFFSET @offset";
-        command.Parameters.AddWithValue("limit", query.PageSize + 1);
-        command.Parameters.AddWithValue("offset", (long)query.Page * query.PageSize);
+        if (query.Limit is { } limit)
+        {
+            sql += " LIMIT @limit";
+            command.Parameters.AddWithValue("limit", limit + 1);
+        }
+        if (query.Offset is { } offset)
+        {
+            sql += " OFFSET @offset";
+            command.Parameters.AddWithValue("offset", offset);
+        }
+        command.CommandText = sql;
 
         var rows = new List<TableRow>();
         await using var reader = await command.ExecuteReaderAsync(ct);
@@ -97,10 +105,12 @@ internal static class TableQueries
             }
             rows.Add(new(reader.GetInt32(0), values, links));
         }
-        var hasMore = rows.Count > query.PageSize;
-        if (hasMore)
-            rows.RemoveAt(query.PageSize);
-        return new(query.Page, hasMore, rows);
+        if (query.Limit is { } maxRows && rows.Count > maxRows)
+        {
+            rows.RemoveAt(maxRows);
+            return new(true, rows);
+        }
+        return new(false, rows);
     }
 
     public static async Task<List<LookupValue>> LookupAsync(NpgsqlConnection connection, Resource target, string query,
@@ -109,7 +119,7 @@ internal static class TableQueries
         await using var command = new NpgsqlCommand($"""
             SELECT id, label FROM (SELECT t.id, {Label(target, "t", "v")} AS label FROM {Source(target)}) AS choices
             WHERE id = @selected OR strpos(lower(label COLLATE pg_catalog."unicode"), lower(@query COLLATE pg_catalog."unicode")) > 0
-            ORDER BY (id IS NOT DISTINCT FROM @selected) DESC, label COLLATE pg_catalog."unicode", id LIMIT {PageSize}
+            ORDER BY (id IS NOT DISTINCT FROM @selected) DESC, label COLLATE pg_catalog."unicode", id LIMIT {LookupLimit}
             """, connection);
         command.Parameters.AddWithValue("query", query);
         command.Parameters.AddWithValue("selected", NpgsqlDbType.Integer, (object?)selected ?? DBNull.Value);

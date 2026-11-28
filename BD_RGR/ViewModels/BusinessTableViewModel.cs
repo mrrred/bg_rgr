@@ -6,6 +6,7 @@ namespace BD_RGR.ViewModels;
 
 public sealed class BusinessTableViewModel : ViewModel, IDisposable
 {
+    private const int PageSize = 50;
     private readonly AuthApiClient _api;
     private readonly Session _session;
     private readonly Action<AuthNotice> _sessionEnded;
@@ -125,24 +126,21 @@ public sealed class BusinessTableViewModel : ViewModel, IDisposable
             else
                 return;
         }
-        _page = 0;
-        await LoadRowsAsync();
+        await LoadRowsAsync(pageNumber: 0);
     });
 
     public Task SortAsync(string key) => RunAsync(async () =>
     {
         _descending = _sort == key && !_descending;
         _sort = key;
-        _page = 0;
-        await LoadRowsAsync();
+        await LoadRowsAsync(pageNumber: 0);
     });
 
     public Task PageAsync(int delta) => RunAsync(async () =>
     {
         if (delta < 0 && !CanGoPrevious || delta > 0 && !CanGoNext)
             return;
-        _page += delta;
-        await LoadRowsAsync();
+        await LoadRowsAsync(pageNumber: _page + delta);
     });
 
     public void NewRow()
@@ -184,10 +182,7 @@ public sealed class BusinessTableViewModel : ViewModel, IDisposable
         await _api.DeleteRowAsync(_session, table.Name, row.Id);
         await LoadRowsAsync();
         if (Rows.Length == 0 && _page > 0)
-        {
-            _page--;
-            await LoadRowsAsync();
-        }
+            await LoadRowsAsync(pageNumber: _page - 1);
         SetStatus(new("RecordDeleted"));
     });
 
@@ -203,8 +198,8 @@ public sealed class BusinessTableViewModel : ViewModel, IDisposable
             var reader = new ResourceReader(_api, _session);
             var matches = await Task.WhenAll(_catalog!.Where(resource => resource.IsVehicleSubtype).Select(async resource =>
             {
-                var rows = await reader.PageAsync(resource.Name, "id", CancellationToken.None,
-                    [$"vehicle_id:eq:{ResourceReader.Id(id)}"], size: 1);
+                var rows = await reader.PageAsync(resource.Name, "id", 1, CancellationToken.None,
+                    [$"vehicle_id:eq:{ResourceReader.Id(id)}"]);
                 return rows.Rows.Select(row => new VehicleLink(resource.Name, row.Id));
             }));
             var links = matches.SelectMany(items => items).ToArray();
@@ -244,9 +239,9 @@ public sealed class BusinessTableViewModel : ViewModel, IDisposable
             throw new AuthApiException("InvalidPeriod");
 
         var reader = new ResourceReader(_api, _session);
-        Task<BusinessPage> Last(DateTime date) => reader.PageAsync("vehicle_mileage_log", "mileage", CancellationToken.None,
+        Task<BusinessPage> Last(DateTime date) => reader.PageAsync("vehicle_mileage_log", "mileage", 1, CancellationToken.None,
             [$"vehicle_id:eq:{ResourceReader.Id(id)}", $"reading_date:lte:{ResourceReader.BoundsDate(DateOnly.FromDateTime(date))}"],
-            size: 1, sort: "reading_date", descending: true);
+            sort: "reading_date", descending: true);
         var first = Last(from);
         var last = from == to ? first : Last(to);
         await Task.WhenAll(first, last);
@@ -264,7 +259,7 @@ public sealed class BusinessTableViewModel : ViewModel, IDisposable
 
         var location = new Location(target, "", "id", false, 0, id, field, filterId);
         var page = id is { } targetId
-            ? new BusinessPage(0, false, [await _api.RowAsync(_session, target, targetId)])
+            ? new BusinessPage(false, [await _api.RowAsync(_session, target, targetId)])
             : await FetchAsync(resource, location);
         _history.Push(Capture());
         Prepare(resource, location);
@@ -291,25 +286,27 @@ public sealed class BusinessTableViewModel : ViewModel, IDisposable
         Notify(nameof(VisibleTitleKey));
         Notify(nameof(ShowsMileage));
         Notify(nameof(MileageVehicle));
-        ApplyPage(new BusinessPage(_page, false, []), null);
+        ApplyPage(new BusinessPage(false, []), null);
     }
 
     private Task<BusinessPage> FetchAsync(BusinessResource resource, Location location) =>
         _api.TableAsync(_session, resource.Name, location.Search, location.Sort, location.Descending,
-            location.Page, location.FilterField, location.FilterId);
+            PageSize, (long)location.Page * PageSize, location.FilterField, location.FilterId);
 
-    private async Task LoadRowsAsync(int? selectId = null)
+    private async Task LoadRowsAsync(int? selectId = null, int? pageNumber = null)
     {
         if (Resource is not { } resource)
             return;
         var location = Capture();
+        if (pageNumber is { } number)
+            location = location with { Page = number };
         var page = await FetchAsync(resource, location);
+        _page = location.Page;
         ApplyPage(page, selectId ?? location.SelectionId);
     }
 
     private void ApplyPage(BusinessPage page, int? selectId)
     {
-        _page = page.Page;
         _hasMore = page.HasMore;
         _creating = false;
         _rows = Resource is { } resource && _catalog is { } catalog

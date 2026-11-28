@@ -8,6 +8,6 @@ public sealed record BusinessField(string Name, string TitleKey, string Kind, bo
 
 public sealed record BusinessChoice(string Value, string TitleKey);
 public sealed record BusinessRow(int Id, Dictionary<string, string?> Values, Dictionary<string, string?> Labels);
-public sealed record BusinessPage(int Page, bool HasMore, BusinessRow[] Rows);
+public sealed record BusinessPage(bool HasMore, BusinessRow[] Rows);
 public sealed record LookupRow(int Id, string Label);
 public sealed record VehicleLink(string Resource, int Id);

@@ -6,7 +6,7 @@ namespace BD_RGR.Api.Data;
 
 internal sealed record ResourceFilter(Field Field, string Operator, string[] Values);
 
-internal sealed record ResourceRead(int Page, int PageSize, Field[] Fields, bool Labels, Field? Sort,
+internal sealed record ResourceRead(int? Limit, long? Offset, Field[] Fields, bool Labels, Field? Sort,
     bool Descending, int? AfterId, Field? LatestBy, ResourceFilter[] Filters)
 {
     private static readonly Field Identifier = new("id", "FieldId", "integer");
@@ -20,11 +20,11 @@ internal sealed record ResourceRead(int Page, int PageSize, Field[] Fields, bool
         ["lte"] = "<="
     };
 
-    public static ResourceRead Parse(Resource resource, int? page, int? size, string? columns, bool? labels,
+    public static ResourceRead Parse(Resource resource, int? limit, long? offset, string? columns, bool? labels,
         string? sort, bool? descending, int? afterId, string? latestBy, string[] filters)
     {
-        if (page is < 0 or > 1_000_000 || size is < 1 or > 500 || filters.Length > 20 ||
-            afterId is < 0 || (afterId is not null && (page is > 0 || sort is not null and not "id" || descending == true || latestBy is not null)))
+        if (limit is < 1 or > 500 || offset is < 0 || filters.Length > 20 ||
+            afterId is < 0 || (afterId is not null && (offset is > 0 || sort is not null and not "id" || descending == true || latestBy is not null)))
             throw new DataFailure("InvalidField");
 
         var fields = resource.ReadFields.Prepend(Identifier).ToDictionary(field => field.Name, StringComparer.Ordinal);
@@ -39,7 +39,7 @@ internal sealed record ResourceRead(int Page, int PageSize, Field[] Fields, bool
         if (partition is not null && (partition.Name == "id" || sortField is null))
             throw new DataFailure("InvalidField");
 
-        return new(page ?? 0, size ?? TableQueries.PageSize, projection, labels ?? true, sortField, descending ?? false,
+        return new(limit, offset, projection, labels ?? true, sortField, descending ?? false,
             afterId, partition, filterList);
     }
 

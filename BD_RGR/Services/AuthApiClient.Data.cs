@@ -16,9 +16,10 @@ public sealed partial class AuthApiClient
     }
 
     public Task<BusinessPage> TableAsync(Session session, string resource, string search, string sort, bool descending,
-        int page, string? relatedField, int? relatedId)
+        int limit, long offset, string? relatedField, int? relatedId)
     {
-        var url = $"tables/{resource}?q={Uri.EscapeDataString(search)}&sort={Uri.EscapeDataString(sort)}&desc={descending}&page={page}";
+        var url = FormattableString.Invariant(
+            $"tables/{resource}?q={Uri.EscapeDataString(search)}&sort={Uri.EscapeDataString(sort)}&desc={descending}&limit={limit}&offset={offset}");
         if (relatedField is not null && relatedId is { } id)
             url += $"&relatedField={Uri.EscapeDataString(relatedField)}&relatedId={id}";
         return GetAsync<BusinessPage>(session, url);
@@ -32,12 +33,12 @@ public sealed partial class AuthApiClient
         GetAsync<LookupRow[]>(session, $"lookups/{resource}/{field}?q={Uri.EscapeDataString(search)}"
             + (selected is null ? "" : $"&selected={Uri.EscapeDataString(selected)}"), cancellationToken);
 
-    internal Task<BusinessPage> ReadPageAsync(Session session, string resource, string fields, string[] filters,
-        int size, int page, int? afterId, string? sort, bool descending, string? latestBy, CancellationToken cancellationToken)
+    internal Task<BusinessPage> ReadAsync(Session session, string resource, string fields, string[] filters,
+        int? limit, string? sort, bool descending, string? latestBy, CancellationToken cancellationToken)
     {
-        var url = $"tables/{resource}?labels=false&fields={Uri.EscapeDataString(fields)}&pageSize={size}&page={page}";
-        if (afterId is { } cursor)
-            url += $"&afterId={cursor}";
+        var url = $"tables/{resource}?labels=false&fields={Uri.EscapeDataString(fields)}";
+        if (limit is { } size)
+            url += FormattableString.Invariant($"&limit={size}");
         if (sort is not null)
             url += $"&sort={Uri.EscapeDataString(sort)}&desc={descending}";
         if (latestBy is not null)
